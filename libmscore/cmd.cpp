@@ -153,6 +153,7 @@ void Score::undoRedo(bool undo, EditData* ed)
       else
             undoStack()->redo(ed);
       update();
+      masterScore()->setPlaylistDirty();  // TODO: flag all individual operations
       updateSelection();
       }
 
@@ -183,8 +184,8 @@ void Score::endCmd(bool rollback)
       undoStack()->endMacro(noUndo);
 
       if (dirty()) {
-            masterScore()->_playlistDirty = true;  // TODO: flag individual operations
-            masterScore()->_autosaveDirty = true;
+            masterScore()->setPlaylistDirty();  // TODO: flag individual operations
+            masterScore()->setAutosaveDirty(true);
             }
       MuseScoreCore::mscoreCore->endCmd();
       cmdState().reset();
@@ -243,9 +244,9 @@ void Score::update()
             if (is.noteEntryMode() && is.segment()) {
                   setPlayPos(is.segment()->tick());
                   }
-            if (_playlistDirty) {
+            if (playlistDirty()) {
                   emit playlistChanged();
-                  _playlistDirty = false;
+                  masterScore()->setPlaylistClean();
                   }
             cs.reset();
             }
