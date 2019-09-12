@@ -363,12 +363,20 @@
     <seq>Shift+Down</seq>
     </SC>
   <SC>
-    <key>page-prev</key>
+    <key>scr-prev</key>
     <seq>PgUp</seq>
     </SC>
   <SC>
-    <key>page-next</key>
+    <key>scr-next</key>
     <seq>PgDown</seq>
+    </SC>
+  <SC>
+    <key>page-prev</key>
+    <seq>Ctrl+PgUp</seq>
+    </SC>
+  <SC>
+    <key>page-next</key>
+    <seq>Ctrl+PgDown</seq>
     </SC>
   <SC>
     <key>page-top</key>
@@ -633,9 +641,9 @@
     <key>clef-bass</key>
     <seq>Ctrl+Y,Ctrl+2</seq>
     </SC>
-   <SC>
+  <SC>
     <key>system-break</key>
-   <seq>Return</seq>
+    <seq>Return</seq>
     </SC>
   <SC>
     <key>page-break</key>
@@ -1030,6 +1038,4 @@
     <key>toggle-insert-mode</key>
     <seq>Ctrl+I</seq>
     </SC>
-
   </Shortcuts>
-

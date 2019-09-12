@@ -86,6 +86,8 @@ class BarLine final : public Element {
       virtual void layout() override;
       void layout2();
       virtual void scanElements(void* data, void (*func)(void*, Element*), bool all=true) override;
+      virtual void setTrack(int t) override;
+      virtual void setScore(Score* s) override;
       virtual void add(Element*) override;
       virtual void remove(Element*) override;
       virtual bool acceptDrop(EditData&) const override;
@@ -128,6 +130,7 @@ class BarLine final : public Element {
       virtual QVariant getProperty(Pid propertyId) const override;
       virtual bool setProperty(Pid propertyId, const QVariant&) override;
       virtual QVariant propertyDefault(Pid propertyId) const override;
+      virtual Pid propertyId(const QStringRef& xmlName) const override;
       virtual void undoChangeProperty(Pid id, const QVariant&, PropertyFlags ps);
       using ScoreElement::undoChangeProperty;
 

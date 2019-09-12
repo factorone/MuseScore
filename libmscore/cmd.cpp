@@ -245,7 +245,8 @@ void Score::update()
                   setPlayPos(is.segment()->tick());
                   }
             if (playlistDirty()) {
-                  emit playlistChanged();
+                  for (Score* s : scoreList())
+                        emit s->playlistChanged();
                   masterScore()->setPlaylistClean();
                   }
             cs.reset();
@@ -279,11 +280,13 @@ void Score::deletePostponed()
 //        HAIRPIN, LET_RING, VIBRATO and TEXTLINE
 //---------------------------------------------------------
 
-void Score::cmdAddSpanner(Spanner* spanner, const QPointF& pos)
+void Score::cmdAddSpanner(Spanner* spanner, const QPointF& pos, bool firstStaffOnly)
       {
       int staffIdx;
       Segment* segment;
       MeasureBase* mb = pos2measure(pos, &staffIdx, 0, &segment, 0);
+      if (firstStaffOnly)
+            staffIdx = 0;
       // ignore if we do not have a measure
       if (mb == 0 || mb->type() != ElementType::MEASURE) {
             qDebug("cmdAddSpanner: cannot put object here");
@@ -307,7 +310,7 @@ void Score::cmdAddSpanner(Spanner* spanner, const QPointF& pos)
             Measure* m = toMeasure(mb);
             QRectF b(m->canvasBoundingRect());
 
-            if (pos.x() >= (b.x() + b.width() * .5) && m != lastMeasureMM())
+            if (pos.x() >= (b.x() + b.width() * .5) && m != lastMeasureMM() && m->nextMeasure()->system() == m->system())
                   m = m->nextMeasure();
             spanner->setTick(m->tick());
             spanner->setTick2(m->endTick());
@@ -1516,6 +1519,7 @@ void Score::upDown(bool up, UpDownMode mode)
             // play new note with velocity 80 for 0.3 sec:
             setPlayNote(true);
             }
+      setSelectionChanged(true);
       }
 
 //---------------------------------------------------------
@@ -2182,7 +2186,7 @@ Element* Score::move(const QString& cmd)
                   Segment* s = _is.segment()->prev1(SegmentType::ChordRest);
                   int track = _is.track();
                   for (; s; s = s->prev1(SegmentType::ChordRest)) {
-                        if (s->element(track) || s->measure() != m) {
+                        if (s->element(track) || (s->measure() != m && s->rtick().isZero())) {
                               if (s->element(track)) {
                                     if (s->element(track)->isRest() && toRest(s->element(track))->isGap())
                                           continue;
@@ -2601,7 +2605,7 @@ void Score::cmdExplode()
             int full = 0;
 
             for (Segment* seg = startSegment; seg && seg->tick() < lTick; seg = seg->next1()) {
-                  for (int i = srcTrack; i < srcTrack + VOICES && full != VOICES; i ++) {
+                  for (int i = srcTrack; i < srcTrack + VOICES && full != VOICES; i++) {
                         bool t = true;
                         for (int j = 0; j < VOICES; j++) {
                               if (i == sTracks[j]) {
@@ -2791,6 +2795,13 @@ void Score::cmdSlashFill()
             return;
 
       Segment* endSegment = selection().endSegment();
+
+      // operate on measures underlying mmrests
+      if (startSegment && startSegment->measure() && startSegment->measure()->isMMRest())
+            startSegment = startSegment->measure()->mmRestFirst()->first();
+      if (endSegment && endSegment->measure() && endSegment->measure()->isMMRest())
+            endSegment = endSegment->measure()->mmRestLast()->last();
+
       Fraction endTick = endSegment ? endSegment->tick() : lastSegment()->tick() + Fraction::fromTicks(1);
       Chord* firstSlash = 0;
       Chord* lastSlash = 0;
@@ -3750,7 +3761,6 @@ void Score::cmd(const QAction* a, EditData& ed)
             { "relayout",                   [this]{ cmdRelayout();                                              }},
             { "toggle-autoplace",           [this]{ cmdToggleAutoplace(false);                                  }},
             { "autoplace-enabled",          [this]{ cmdToggleAutoplace(true);                                   }},
-            { "",                           [this]{                                                             }},
             };
 
       for (const auto& c : cmdList) {

@@ -88,6 +88,7 @@ class TDockWidget;
 class Sym;
 class MasterPalette;
 class PluginCreator;
+class MsQmlEngine;
 #ifdef SCRIPT_INTERFACE
 class PluginManager;
 class QmlPluginEngine;
@@ -105,6 +106,11 @@ class HelpBrowser;
 class ToolbarEditor;
 class TourHandler;
 class GeneralAutoUpdater;
+
+class PalettePanel;
+class PaletteTree;
+class PaletteWidget;
+class PaletteWorkspace;
 
 struct PluginDescription;
 enum class SelState : char;
@@ -277,6 +283,7 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       QToolBar* transportTools;
       QToolBar* entryTools;
       QToolBar* feedbackTools;
+      QToolBar* workspacesTools;
       TextTools* _textTools                { 0 };
       PianoTools* _pianoTools              { 0 };
       MediaDialog* _mediaDialog            { 0 };
@@ -291,6 +298,7 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       PluginManager* pluginManager         { 0 };
       QmlPluginEngine* _qmlEngine          { 0 };
 #endif
+      MsQmlEngine* _qmlUiEngine            { 0 };
       SelectionWindow* selectionWindow     { 0 };
 
       QMenu* menuFile;
@@ -310,6 +318,7 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       QMenu* menuTuplet;
 
       QMenu* menuFormat;
+      QMenu* menuStretch;
       QMenu* menuTools;
       QMenu* menuVoices;
       QMenu* menuMeasure;
@@ -317,6 +326,9 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       QMenu* menuPlugins;
       QMenu* menuHelp;
       QMenu* menuTours;
+#ifndef NDEBUG
+      QMenu* menuDebug;
+#endif
       AlbumManager* albumManager           { 0 };
 
       QWidget* _searchDialog               { 0 };
@@ -342,6 +354,9 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       HelpBrowser* helpBrowser       { 0 };
       QDockWidget* manualDock        { 0 };
 
+      PaletteWorkspace* paletteWorkspace { nullptr };
+      PaletteWidget* paletteWidget { nullptr };
+
       PaletteBox* paletteBox         { 0 };
       Inspector* _inspector          { 0 };
       OmrPanel* omrPanel             { 0 };
@@ -354,12 +369,13 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       ScriptEngine* se               { 0 };
       QString pluginPath;
 
+#ifdef SCRIPT_INTERFACE
       void createMenuEntry(PluginDescription*);
       void removeMenuEntry(PluginDescription*);
+#endif
 
       QTimer* autoSaveTimer;
       QList<QAction*> pluginActions;
-      QSignalMapper* pluginMapper        { 0 };
 
       PianorollEditor* pianorollEditor   { 0 };
       DrumrollEditor* drumrollEditor     { 0 };
@@ -442,6 +458,8 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       virtual void showEvent(QShowEvent *event);
 
       void retranslate();
+      void setMenuTitles();
+      void updateMenu(QMenu*& menu, QString menu_id, QString objectName);
 
       void playVisible(bool flag);
       void launchBrowser(const QString whereTo);
@@ -454,7 +472,9 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       bool saveFile(MasterScore* score);
       void fingeringMenu();
 
+#ifdef SCRIPT_INTERFACE
       int  pluginIdxFromPath(QString pluginPath);
+#endif
       void startDebugger();
       void midiinToggled(bool);
       void undoRedo(bool undo);
@@ -496,6 +516,7 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
    signals:
       void windowSplit(bool);
       void musescoreWindowWasShown();
+      void workspacesChanged();
 
    private slots:
       void cmd(QAction* a, const QString& cmd);
@@ -566,6 +587,7 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       void dirtyChanged(Score*);
       void setPos(const Fraction& tick);
       void pluginTriggered(int);
+      void pluginTriggered(QString path);
       void handleMessage(const QString& message);
       void setCurrentScoreView(ScoreView*);
       void setCurrentScoreView(int);
@@ -641,6 +663,7 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       PluginManager* getPluginManager() const     { return pluginManager; }
       QmlPluginEngine* getPluginEngine();
 #endif
+      MsQmlEngine* getQmlUiEngine();
       void writeSessionFile(bool);
       bool restoreSession(bool);
       bool splitScreen() const { return _splitScreen; }
@@ -648,6 +671,9 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       virtual void setCurrentView(int tabIdx, int idx);
       void loadPlugins();
       void unloadPlugins();
+#ifdef SCRIPT_INTERFACE
+      void addPluginMenuEntries();
+#endif
 
       ScoreState state() const { return _sstate; }
       void changeState(ScoreState);
@@ -692,6 +718,9 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
 
       bool hRaster() const { return hRasterAction->isChecked(); }
       bool vRaster() const { return vRasterAction->isChecked(); }
+
+      PaletteWorkspace* getPaletteWorkspace();
+      void changeWorkspace(const QString& name);
 
       PaletteBox* getPaletteBox();
       void disableCommands(bool val) { inChordEditor = val; }
@@ -740,6 +769,7 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
 
       /////The methods are used in the musescore.com backend
       bool exportAllMediaFiles(const QString& inFilePath, const QString& outFilePath = "/dev/stdout");
+      bool exportScoreMetadata(const QString& inFilePath, const QString& outFilePath = "/dev/stdout");
       bool exportMp3AsJSON(const QString& inFilePath, const QString& outFilePath = "/dev/stdout");
       bool exportPartsPdfsToJSON(const QString& inFilePath, const QString& outFilePath = "/dev/stdout");
       /////////////////////////////////////////////////
@@ -801,8 +831,36 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       static Palette* newLinesPalette();
       static Palette* newFretboardDiagramPalette();
 
+      static PalettePanel* newTempoPalettePanel(bool defaultPalette = false);
+      static PalettePanel* newTextPalettePanel(bool defaultPalette = false);
+      static PalettePanel* newTimePalettePanel();
+      static PalettePanel* newRepeatsPalettePanel();
+      static PalettePanel* newBreaksPalettePanel();
+      static PalettePanel* newBeamPalettePanel();
+      static PalettePanel* newDynamicsPalettePanel(bool defaultPalette = false);
+      static PalettePanel* newFramePalettePanel();
+      static PalettePanel* newFingeringPalettePanel();
+      static PalettePanel* newTremoloPalettePanel();
+      static PalettePanel* newNoteHeadsPalettePanel();
+      static PalettePanel* newArticulationsPalettePanel();
+      static PalettePanel* newOrnamentsPalettePanel();
+      static PalettePanel* newAccordionPalettePanel();
+      static PalettePanel* newBracketsPalettePanel();
+      static PalettePanel* newBreathPalettePanel();
+      static PalettePanel* newArpeggioPalettePanel();
+      static PalettePanel* newClefsPalettePanel(bool defaultPalette = false);
+      static PalettePanel* newGraceNotePalettePanel();
+      static PalettePanel* newBagpipeEmbellishmentPalettePanel();
+      static PalettePanel* newKeySigPalettePanel();
+      static PalettePanel* newAccidentalsPalettePanel(bool defaultPalette = false);
+      static PalettePanel* newBarLinePalettePanel();
+      static PalettePanel* newLinesPalettePanel();
+      static PalettePanel* newFretboardDiagramPalettePanel();
+      static PaletteTree* newMasterPaletteTree();
+
       WorkspaceDialog* workspaceDialog() { return _workspaceDialog; }
       void updateIcons();
+      void updateMenus();
 
       Inspector* inspector()           { return _inspector; }
       PluginCreator* pluginCreator()   { return _pluginCreator; }
@@ -816,10 +874,13 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
 
       TourHandler* tourHandler()       { return _tourHandler; }
 
+#ifdef SCRIPT_INTERFACE
       void registerPlugin(PluginDescription*);
       void unregisterPlugin(PluginDescription*);
+#endif
 
       Q_INVOKABLE void showStartcenter(bool);
+      void reDisplayDockWidget(QDockWidget* widget, bool visible);
       void showPlayPanel(bool);
 
       QFileInfoList recentScores() const;
@@ -870,6 +931,8 @@ class MuseScore : public QMainWindow, public MuseScoreCore {
       bool uninstallExtension(QString extensionId);
       Q_INVOKABLE bool isInstalledExtension(QString extensionId);
 
+      void focusScoreView();
+
       ScriptRecorder* getScriptRecorder();
       bool runTestScripts(const QStringList& scripts);
       };
@@ -891,7 +954,7 @@ extern bool saveXml(Score*, QIODevice*);
 extern bool saveXml(Score*, const QString& name);
 
 struct PluginDescription;
-extern void collectPluginMetaInformation(PluginDescription*);
+extern bool collectPluginMetaInformation(PluginDescription*);
 extern QString getSharePath();
 
 extern Score::FileError importMidi(MasterScore*, const QString& name);

@@ -148,7 +148,7 @@ void Score::updateCapo()
 //   updateChannel
 //---------------------------------------------------------
 
-void MasterScore::updateChannel()
+void Score::updateChannel()
       {
       for (Staff* s : staves()) {
             for (int i = 0; i < VOICES; ++i)
@@ -253,35 +253,31 @@ static void collectNote(EventMap* events, int channel, const Note* note, int vel
       if (chord->isGrace()) {
             Q_ASSERT( !graceNotesMerged(chord)); // this function should not be called on a grace note if grace notes are merged
             chord = toChord(chord->parent());
-            ticks = chord->actualTicks().ticks(); // ticks of the parent note
-            tieLen = 0;
             }
-      else {
-            ticks = chord->actualTicks().ticks(); // ticks of the actual note
-            // calculate additional length due to ties forward
-            // taking NoteEvent length adjustments into account
-            // but stopping at any note with multiple NoteEvents
-            // and processing those notes recursively
-            if (note->tieFor()) {
-                  Note* n = note->tieFor()->endNote();
-                  while (n) {
-                        NoteEventList nel = n->playEvents();
-                        if (nel.size() == 1) {
-                              // add value of this note to main note
-                              // if we wish to suppress first note of ornament,
-                              // then do this regardless of number of NoteEvents
-                              tieLen += (n->chord()->actualTicks().ticks() * (nel[0].len())) / 1000;
-                              }
-                        else {
-                              // recurse
-                              collectNote(events, channel, n, velo, tickOffset, staffIdx);
-                              break;
-                              }
-                        if (n->tieFor() && n != n->tieFor()->endNote())
-                              n = n->tieFor()->endNote();
-                        else
-                              break;
+      ticks = chord->actualTicks().ticks();
+      // calculate additional length due to ties forward
+      // taking NoteEvent length adjustments into account
+      // but stopping at any note with multiple NoteEvents
+      // and processing those notes recursively
+      if (note->tieFor()) {
+            Note* n = note->tieFor()->endNote();
+            while (n) {
+                  NoteEventList nel = n->playEvents();
+                  if (nel.size() == 1) {
+                        // add value of this note to main note
+                        // if we wish to suppress first note of ornament,
+                        // then do this regardless of number of NoteEvents
+                        tieLen += (n->chord()->actualTicks().ticks() * (nel[0].len())) / 1000;
                         }
+                  else {
+                        // recurse
+                        collectNote(events, channel, n, velo, tickOffset, staffIdx);
+                        break;
+                        }
+                  if (n->tieFor() && n != n->tieFor()->endNote())
+                        n = n->tieFor()->endNote();
+                  else
+                        break;
                   }
             }
 
@@ -939,6 +935,7 @@ static void collectMeasureEventsDefault(EventMap* events, Measure* m, Staff* sta
                               int staticTick = seg->tick().ticks();
                               changeCCBetween(renderData.tempPlayEvents, staticTick, staticTick, exprVal, exprVal, channel, controller, defaultChangeMethod, tickOffset, staffIdx);
                               }
+                        velocity = velocityStart; // update the velocity value that will be used in note events
                         } // if instr->singleNoteDynamics()
                   else {
                         if (chord != 0) {
@@ -1164,6 +1161,11 @@ void Score::updateVelo()
                               continue;
                         const Dynamic* d = toDynamic(e);
                         int v            = d->velocity();
+
+                        // treat an invalid dynamic as no change, i.e. a dynamic set to 0
+                        if (v < 1)
+                              continue;
+
                         v = qBound(1, v, 127);     //  illegal values
 
                         // If a dynamic has 'velocity change' update its ending
@@ -2156,14 +2158,16 @@ void renderChordArticulation(Chord* chord, QList<NoteEventList> & ell, int & gat
 
 static bool shouldRenderNote(Note* n)
       {
-      int dist = 0;
       while (n->tieBack()) {
             n = n->tieBack()->startNote();
-            ++dist;
-            if (n && n->playEvents().offtime() > (dist * NoteEvent::NOTE_LENGTH)) {
+            if (findFirstTrill(n->chord()))
                   // The previous tied note probably has events for this note too.
                   // That is, we don't need to render this note separately.
                   return false;
+            for (Articulation* a : n->chord()->articulations()) {
+                  if (a->isOrnament()) {
+                        return false;
+                        }
                   }
             }
       return true;
@@ -2297,12 +2301,8 @@ void Score::createGraceNotesPlayEvents(const Fraction& tick, Chord* chord, int& 
                   el.append(nel);
                   }
 
-            if (gc->playEventType() == PlayEventType::InvalidUser)
-                  gc->score()->undo(new ChangeEventList(gc, el));
-            else if (gc->playEventType() == PlayEventType::Auto) {
-                  for (int ii = 0; ii < int(nn); ++ii)
-                        gc->notes()[ii]->setPlayEvents(el[ii]);
-                  }
+            if (gc->playEventType() == PlayEventType::Auto)
+                  gc->setNoteEventLists(el);
             on += graceDuration;
             }
       if (na) {
@@ -2324,12 +2324,8 @@ void Score::createGraceNotesPlayEvents(const Fraction& tick, Chord* chord, int& 
                         el.append(nel);
                         }
 
-                  if (gc->playEventType() == PlayEventType::InvalidUser)
-                        gc->score()->undo(new ChangeEventList(gc, el));
-                  else if (gc->playEventType() == PlayEventType::Auto) {
-                        for (int ii = 0; ii < int(nn); ++ii)
-                              gc->notes()[ii]->setPlayEvents(el[ii]);
-                        }
+                  if (gc->playEventType() == PlayEventType::Auto)
+                        gc->setNoteEventLists(el);
                   on += graceDuration1;
                   }
             }
@@ -2376,15 +2372,9 @@ void Score::createPlayEvents(Chord* chord)
       //    render normal (and articulated) chords
       //
       QList<NoteEventList> el = renderChord(chord, gateTime, ontime, trailtime);
-      if (chord->playEventType() == PlayEventType::InvalidUser) {
-            chord->score()->undo(new ChangeEventList(chord, el));
-            }
-      else if (chord->playEventType() == PlayEventType::Auto) {
-            int n = int(chord->notes().size());
-            for (int i = 0; i < n; ++i)
-                  chord->notes()[i]->setPlayEvents(el[i]);
-            }
-      // don’t change event list if type is PlayEventType::User
+      if (chord->playEventType() == PlayEventType::Auto)
+            chord->setNoteEventLists(el);
+      // don't change event list if type is PlayEventType::User
       }
 
 void Score::createPlayEvents(Measure* start, Measure* end)
@@ -2487,7 +2477,7 @@ void Score::renderMidi(EventMap* events, const SynthesizerState& synthState)
 void Score::renderMidi(EventMap* events, bool metronome, bool expandRepeats, const SynthesizerState& synthState)
       {
       masterScore()->setExpandRepeats(expandRepeats);
-      MidiRenderer(masterScore()).renderScore(events, synthState, metronome);
+      MidiRenderer(this).renderScore(events, synthState, metronome);
       }
 
 void MidiRenderer::renderScore(EventMap* events, const SynthesizerState& synthState, bool metronome)
@@ -2612,7 +2602,9 @@ void MidiRenderer::updateChunksPartition()
       {
       chunks.clear();
 
-      for (const RepeatSegment* rs : score->repeatList()) {
+      const RepeatList& repeatList = score->repeatList();
+
+      for (const RepeatSegment* rs : repeatList) {
             const int tickOffset = rs->utick - rs->tick;
 
             if (!minChunkSize) {
@@ -2639,6 +2631,17 @@ void MidiRenderer::updateChunksPartition()
                   }
             if (chunkStart) // last measures did not get added to chunk list
                   chunks.emplace_back(tickOffset, chunkStart, rs->lastMeasure());
+            }
+
+      if (score != repeatList.score()) {
+            // Repeat list may belong to another linked score (e.g. MasterScore).
+            // Update chunks to make them contain measures from the currently
+            // rendered score.
+            for (Chunk& ch : chunks) {
+                  Measure* first = score->tick2measure(ch.startMeasure()->tick());
+                  Measure* last = score->tick2measure(ch.lastMeasure()->tick());
+                  ch = Chunk(ch.tickOffset(), first, last);
+                  }
             }
       }
 

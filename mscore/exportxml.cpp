@@ -295,6 +295,7 @@ class ExportMusicXml {
       void timesig(TimeSig* tsig);
       void keysig(const KeySig* ks, ClefType ct, int staff = 0, bool visible = true);
       void barlineLeft(Measure* m);
+      void barlineMiddle(const BarLine* bl);
       void barlineRight(Measure* m);
       void lyrics(const std::vector<Lyrics*>* ll, const int trk);
       void work(const MeasureBase* measure);
@@ -320,7 +321,7 @@ public:
       void write(QIODevice* dev);
       void credits(XmlWriter& xml);
       void moveToTick(const Fraction& t);
-      void words(Text const* const text, int staff);
+      void words(TextBase const* const text, int staff);
       void rehearsal(RehearsalMark const* const rmk, int staff);
       void hairpin(Hairpin const* const hp, int staff, const Fraction& tick);
       void ottava(Ottava const* const ot, int staff, const Fraction& tick);
@@ -881,87 +882,30 @@ public:
 // trill handling
 //---------------------------------------------------------
 
-// Find chords to attach trills to. This is necessary because in MuseScore
-// trills are spanners (thus attached to segments), while in MusicXML trills
-// are attached to notes.
-// TBD: must trill end be in the same staff as trill started ?
-// if so, no need to pass in strack and etrack (trill has a track)
-
-static void findTrillAnchors(const Trill* trill, Chord*& startChord, Chord*& stopChord)
-      {
-      const Segment* seg     = trill->startSegment();
-      const Fraction endTick = trill->tick2();
-      const int strack       = trill->track();
-      // try to find chords in the same track:
-      // find a track with suitable chords both for start and stop
-      for (int i = 0; i < VOICES; ++i) {
-            Element* el = seg->element(strack + i);
-            if (!el)
-                  continue;
-            if (el->type() != ElementType::CHORD)
-                  continue;
-            startChord = static_cast<Chord*>(el);
-            Segment* s = trill->score()->tick2segmentEnd(strack + i, endTick);
-            if (!s)
-                  continue;
-            el = s->element(strack + i);
-            if (!el)
-                  continue;
-            if (el->type() != ElementType::CHORD)
-                  continue;
-            stopChord = static_cast<Chord*>(el);
-            return;
-            }
-      // try to find start/stop chords in different tracks
-      for (int i = 0; i < VOICES; ++i) {
-            Element* el = seg->element(strack + i);
-            if (!el)
-                  continue;
-            if (el->type() != ElementType::CHORD)
-                  continue;
-            startChord = static_cast<Chord*>(el);
-            break;      // first chord found is OK
-            }
-      for (int i = 0; i < VOICES; ++i) {
-            Segment* s = trill->score()->tick2segmentEnd(strack + i, endTick);
-            if (!s)
-                  continue;
-            Element* el = s->element(strack + i);
-            if (!el)
-                  continue;
-            if (el->type() != ElementType::CHORD)
-                  continue;
-            stopChord = static_cast<Chord*>(el);
-            break;      // first chord found is OK
-            }
-      }
-
 // find all trills in this measure and this part
 
 static void findTrills(Measure* measure, int strack, int etrack, TrillHash& trillStart, TrillHash& trillStop)
       {
       // loop over all spanners in this measure
-      Fraction stick = measure->tick();
-      Fraction etick = measure->tick() + measure->ticks();
+      auto stick = measure->tick();
+      auto etick = measure->tick() + measure->ticks();
       for (auto it = measure->score()->spanner().lower_bound(stick.ticks()); it != measure->score()->spanner().upper_bound(etick.ticks()); ++it) {
-            Spanner* e = it->second;
-            //qDebug("findTrills 1 trill %p type %d track %d tick %d", e, e->type(), e->track(), e->tick());
-            if (e->type() == ElementType::TRILL && strack <= e->track() && e->track() < etrack
+            auto e = it->second;
+            //qDebug("1 trill %p type %d track %d tick %s", e, e->type(), e->track(), qPrintable(e->tick().print()));
+            if (e->isTrill() && strack <= e->track() && e->track() < etrack
                 && e->tick() >= measure->tick() && e->tick() < (measure->tick() + measure->ticks()))
                   {
-                  //qDebug("findTrills 2 trill %p", e);
+                  //qDebug("2 trill %p", e);
                   // a trill is found starting in this segment, trill end time is known
                   // determine notes to write trill start and stop
-                  const Trill* tr = static_cast<const Trill*>(e);
-                  Chord* startChord = 0;  // chord where trill starts
-                  Chord* stopChord = 0;   // chord where trill stops
 
-                  findTrillAnchors(tr, startChord, stopChord);
-                  //qDebug("findTrills 3 tr %p startChord %p stopChord %p", tr, startChord, stopChord);
+                  const auto tr = toTrill(e);
+                  auto elem1 = tr->startElement();
+                  auto elem2 = tr->endElement();
 
-                  if (startChord && stopChord) {
-                        trillStart.insert(startChord, tr);
-                        trillStop.insert(stopChord, tr);
+                  if (elem1 && elem1->isChord() && elem2 && elem2->isChord()) {
+                        trillStart.insert(toChord(elem1), tr);
+                        trillStop.insert(toChord(elem2), tr);
                         }
                   }
             }
@@ -1496,8 +1440,7 @@ static void ending(XmlWriter& xml, Volta* v, bool left)
                         break;
                   default:
                         qDebug("unknown volta subtype %d", int(st));
-                        type = "unknown";
-                        break;
+                        return;
                   }
             }
       QString voltaXml = QString("ending number=\"%1\" type=\"%2\"").arg(number).arg(type);
@@ -1523,6 +1466,79 @@ void ExportMusicXml::barlineLeft(Measure* m)
       if (rs)
             _xml.tagE("repeat direction=\"forward\"");
       _xml.etag();
+      }
+
+//---------------------------------------------------------
+//   shortBarlineStyle -- recognize normal but shorter barline styles
+//---------------------------------------------------------
+
+static QString shortBarlineStyle(const BarLine* bl)
+      {
+      if (bl->barLineType() == BarLineType::NORMAL && !bl->spanStaff()) {
+            if (bl->spanTo() < 0) {
+                  // lowest point of barline above lowest staff line
+                  if (bl->spanFrom() < 0) {
+                        return "tick";       // highest point of barline above highest staff line
+                        }
+                  else
+                        return "short";       // highest point of barline below highest staff line
+                  }
+            }
+
+      return "";
+      }
+
+//---------------------------------------------------------
+//   normalBarlineStyle -- recognize other barline styles
+//---------------------------------------------------------
+
+static QString normalBarlineStyle(const BarLine* bl)
+      {
+      const auto bst = bl->barLineType();
+
+      switch (bst) {
+            case BarLineType::NORMAL:
+                  return "regular";
+            case BarLineType::DOUBLE:
+                  return "light-light";
+            case BarLineType::END_REPEAT:
+                  return "light-heavy";
+            case BarLineType::BROKEN:
+                  return "dashed";
+            case BarLineType::DOTTED:
+                  return "dotted";
+            case BarLineType::END:
+            case BarLineType::END_START_REPEAT:
+                  return "light-heavy";
+            default:
+                  qDebug("bar subtype %d not supported", int(bst));
+            }
+
+      return "";
+      }
+
+//---------------------------------------------------------
+//   barlineMiddle -- handle barline middle
+//---------------------------------------------------------
+
+void ExportMusicXml::barlineMiddle(const BarLine* bl)
+      {
+      auto vis = bl->visible();
+      auto shortStyle = shortBarlineStyle(bl);
+      auto normalStyle = normalBarlineStyle(bl);
+      QString barStyle;
+      if (!vis)
+            barStyle = "none";
+      else if (shortStyle != "")
+            barStyle = shortStyle;
+      else
+            barStyle = normalStyle;
+
+      if (barStyle != "") {
+            _xml.stag(QString("barline location=\"middle\""));
+            _xml.tag("bar-style", barStyle);
+            _xml.etag();
+            }
       }
 
 //---------------------------------------------------------
@@ -1737,10 +1753,17 @@ void ExportMusicXml::keysig(const KeySig* ks, ClefType ct, int staff, bool visib
             // traditional key signature
             _xml.tag("fifths", static_cast<int>(kse.key()));
             switch (kse.mode()) {
-                  case KeyMode::NONE:     _xml.tag("mode", "none"); break;
-                  case KeyMode::MAJOR:    _xml.tag("mode", "major"); break;
-                  case KeyMode::MINOR:    _xml.tag("mode", "minor"); break;
-                  case KeyMode::UNKNOWN:
+                  case KeyMode::NONE:       _xml.tag("mode", "none"); break;
+                  case KeyMode::MAJOR:      _xml.tag("mode", "major"); break;
+                  case KeyMode::MINOR:      _xml.tag("mode", "minor"); break;
+                  case KeyMode::DORIAN:     _xml.tag("mode", "dorian"); break;
+                  case KeyMode::PHRYGIAN:   _xml.tag("mode", "phrygian"); break;
+                  case KeyMode::LYDIAN:     _xml.tag("mode", "lydian"); break;
+                  case KeyMode::MIXOLYDIAN: _xml.tag("mode", "mixolydian"); break;
+                  case KeyMode::AEOLIAN:    _xml.tag("mode", "aeolian"); break;
+                  case KeyMode::IONIAN:     _xml.tag("mode", "ionian"); break;
+                  case KeyMode::LOCRIAN:    _xml.tag("mode", "locrian"); break;
+                  case KeyMode::UNKNOWN:    // fall thru
                   default:
                         if (kse.custom())
                               _xml.tag("mode", "none");
@@ -1816,59 +1839,90 @@ int ExportMusicXml::findTrill(const Trill* tr) const
       }
 
 //---------------------------------------------------------
+//   wavyLineStart
+//---------------------------------------------------------
+
+static void wavyLineStart(const Trill* tr, const int number, Notations& notations, Ornaments& ornaments, XmlWriter& xml)
+      {
+      // mscore only supports wavy-line with trill-mark
+      notations.tag(xml);
+      ornaments.tag(xml);
+      xml.tagE("trill-mark");
+      QString tagName = "wavy-line type=\"start\"";
+      tagName += QString(" number=\"%1\"").arg(number + 1);
+      tagName += color2xml(tr);
+      tagName += addPositioningAttributes(tr, true);
+      xml.tagE(tagName);
+      }
+
+//---------------------------------------------------------
+//   wavyLineStop
+//---------------------------------------------------------
+
+static void wavyLineStop(const Trill* tr, const int number, Notations& notations, Ornaments& ornaments, XmlWriter& xml)
+      {
+      notations.tag(xml);
+      ornaments.tag(xml);
+      QString trillXml = QString("wavy-line type=\"stop\" number=\"%1\"").arg(number + 1);
+      trillXml += addPositioningAttributes(tr, false);
+      xml.tagE(trillXml);
+      }
+
+//---------------------------------------------------------
 //   wavyLineStartStop
 //---------------------------------------------------------
 
 void ExportMusicXml::wavyLineStartStop(Chord* chord, Notations& notations, Ornaments& ornaments,
                                        TrillHash& trillStart, TrillHash& trillStop)
       {
-      if (trillStop.contains(chord)) {
-            const Trill* tr = trillStop.value(chord);
-            int n = findTrill(tr);
-            if (n >= 0)
-                  // trill stop after trill start
-                  trills[n] = 0;
-            else {
-                  // trill stop before trill start
-                  n = findTrill(0);
-                  if (n >= 0)
-                        trills[n] = tr;
-                  else
-                        qDebug("too many overlapping trills (chord %p staff %d tick %d)",
-                               chord, chord->staffIdx(), chord->tick().ticks());
-                  }
+      if (trillStart.contains(chord) && trillStop.contains(chord)) {
+            const auto tr = trillStart.value(chord);
+            auto n = findTrill(0);
             if (n >= 0) {
-                  notations.tag(_xml);
-                  ornaments.tag(_xml);
-                  QString trillXml = QString("wavy-line type=\"stop\" number=\"%1\"").arg(n + 1);
-                  trillXml += addPositioningAttributes(tr, false);
-                  _xml.tagE(trillXml);
+                  wavyLineStart(tr, n, notations, ornaments, _xml);
+                  wavyLineStop(tr, n, notations, ornaments, _xml);
                   }
-            trillStop.remove(chord);
+            else
+                  qDebug("too many overlapping trills (chord %p staff %d tick %d)",
+                         chord, chord->staffIdx(), chord->tick().ticks());
             }
-      if (trillStart.contains(chord)) {
-            const Trill* tr = trillStart.value(chord);
-            int n = findTrill(tr);
-            if (n >= 0)
-                  qDebug("wavyLineStartStop error");
-            else {
-                  n = findTrill(0);
-                  if (n >= 0) {
-                        trills[n] = tr;
-                        // mscore only supports wavy-line with trill-mark
-                        notations.tag(_xml);
-                        ornaments.tag(_xml);
-                        _xml.tagE("trill-mark");
-                        QString tagName = "wavy-line type=\"start\"";
-                        tagName += QString(" number=\"%1\"").arg(n + 1);
-                        tagName += color2xml(tr);
-                        tagName += addPositioningAttributes(tr, true);
-                        _xml.tagE(tagName);
+      else {
+            if (trillStop.contains(chord)) {
+                  const auto tr = trillStop.value(chord);
+                  auto n = findTrill(tr);
+                  if (n >= 0)
+                        // trill stop after trill start
+                        trills[n] = 0;
+                  else {
+                        // trill stop before trill start
+                        n = findTrill(0);
+                        if (n >= 0)
+                              trills[n] = tr;
+                        else
+                              qDebug("too many overlapping trills (chord %p staff %d tick %d)",
+                                     chord, chord->staffIdx(), chord->tick().ticks());
                         }
-                  else
-                        qDebug("too many overlapping trills (chord %p staff %d tick %d)",
-                               chord, chord->staffIdx(), chord->tick().ticks());
-                  trillStart.remove(chord);
+                  if (n >= 0) {
+                        wavyLineStop(tr, n, notations, ornaments, _xml);
+                        }
+                  trillStop.remove(chord);
+                  }
+            if (trillStart.contains(chord)) {
+                  const auto tr = trillStart.value(chord);
+                  auto n = findTrill(tr);
+                  if (n >= 0)
+                        qDebug("wavyLineStartStop error");
+                  else {
+                        n = findTrill(0);
+                        if (n >= 0) {
+                              trills[n] = tr;
+                              wavyLineStart(tr, n, notations, ornaments, _xml);
+                              }
+                        else
+                              qDebug("too many overlapping trills (chord %p staff %d tick %d)",
+                                     chord, chord->staffIdx(), chord->tick().ticks());
+                        trillStart.remove(chord);
+                        }
                   }
             }
       }
@@ -2267,7 +2321,7 @@ void ExportMusicXml::chordAttributes(Chord* chord, Notations& notations, Technic
 
 static void arpeggiate(Arpeggio* arp, bool front, bool back, XmlWriter& xml, Notations& notations)
       {
-      QString tagName = "";
+      QString tagName;
       switch (arp->arpeggioType()) {
             case ArpeggioType::NORMAL:
                   notations.tag(xml);
@@ -2298,9 +2352,10 @@ static void arpeggiate(Arpeggio* arp, bool front, bool back, XmlWriter& xml, Not
                   break;
             }
 
-      tagName += addPositioningAttributes(arp);
-      if (tagName != "")
+      if (tagName != "") {
+            tagName += addPositioningAttributes(arp);
             xml.tagE(tagName);
+            }
       }
 
 //---------------------------------------------------------
@@ -2322,9 +2377,9 @@ static int determineTupletNormalTicks(ChordRest const* const chord)
       if (!t)
             return 0;
       /*
-      qDebug("determineTupletNormalTicks t %p baselen %d", t, t->baseLen().ticks());
+      qDebug("determineTupletNormalTicks t %p baselen %s", t, qPrintable(t->baseLen().ticks().print()));
       for (int i = 0; i < t->elements().size(); ++i)
-            qDebug("determineTupletNormalTicks t %p i %d ticks %d", t, i, t->elements().at(i)->duration().ticks());
+            qDebug("determineTupletNormalTicks t %p i %d ticks %s", t, i, qPrintable(t->elements().at(i)->ticks().print()));
             */
       for (unsigned int i = 1; i < t->elements().size(); ++i)
             if (t->elements().at(0)->ticks() != t->elements().at(i)->ticks())
@@ -2470,7 +2525,7 @@ static void writeFingering(XmlWriter& xml, Notations& notations, Technical& tech
       {
       for (const Element* e : note->el()) {
             if (e->type() == ElementType::FINGERING) {
-                  Text* f = (Text*)e;
+                  const TextBase* f = toTextBase(e);
                   notations.tag(xml);
                   technical.tag(xml);
                   QString t = MScoreTextToMXML::toPlainText(f->xmlText());
@@ -2785,7 +2840,7 @@ void ExportMusicXml::chord(Chord* chord, int staff, const std::vector<Lyrics*>* 
             writeTimeModification(_xml, note);
 
             // no stem for whole notes and beyond
-            if (chord->noStem() || chord->measure()->slashStyle(chord->staffIdx())) {
+            if (chord->noStem() || chord->measure()->stemless(chord->staffIdx())) {
                   _xml.tag("stem", QString("none"));
                   }
             else if (note->chord()->stem()) {
@@ -3382,7 +3437,7 @@ void ExportMusicXml::tempoText(TempoText const* const text, int staff)
 //   words
 //---------------------------------------------------------
 
-void ExportMusicXml::words(Text const* const text, int staff)
+void ExportMusicXml::words(TextBase const* const text, int staff)
       {
       /*
       qDebug("ExportMusicXml::words userOff.x=%f userOff.y=%f xmlText='%s' plainText='%s'",
@@ -3581,7 +3636,7 @@ int ExportMusicXml::findOttava(const Ottava* ot) const
 
 void ExportMusicXml::ottava(Ottava const* const ot, int staff, const Fraction& tick)
       {
-      int n = findOttava(ot);
+      auto n = findOttava(ot);
       if (n >= 0)
             ottavas[n] = 0;
       else {
@@ -3594,11 +3649,8 @@ void ExportMusicXml::ottava(Ottava const* const ot, int staff, const Fraction& t
                   }
             }
 
-      directionTag(_xml, _attr, ot);
-      _xml.stag("direction-type");
-
       QString octaveShiftXml;
-      OttavaType st = ot->ottavaType();
+      const auto st = ot->ottavaType();
       if (ot->tick() == tick) {
             const char* sz = 0;
             const char* tp = 0;
@@ -3633,10 +3685,15 @@ void ExportMusicXml::ottava(Ottava const* const ot, int staff, const Fraction& t
             else
                   qDebug("ottava subtype %d not understood", int(st));
             }
-      octaveShiftXml += addPositioningAttributes(ot, ot->tick() == tick);
-      _xml.tagE(octaveShiftXml);
-      _xml.etag();
-      directionETag(_xml, staff);
+
+      if (octaveShiftXml != "") {
+            directionTag(_xml, _attr, ot);
+            _xml.stag("direction-type");
+            octaveShiftXml += addPositioningAttributes(ot, ot->tick() == tick);
+            _xml.tagE(octaveShiftXml);
+            _xml.etag();
+            directionETag(_xml, staff);
+            }
       }
 
 //---------------------------------------------------------
@@ -3763,21 +3820,31 @@ void ExportMusicXml::textLine(TextLine const* const tl, int staff, const Fractio
       rest += addPositioningAttributes(tl, tl->tick() == tick);
 
       directionTag(_xml, _attr, tl);
+
       if (!tl->beginText().isEmpty() && tl->tick() == tick) {
             _xml.stag("direction-type");
             _xml.tag("words", tl->beginText());
             _xml.etag();
             }
+
       _xml.stag("direction-type");
       if (isDashes)
             _xml.tagE(QString("dashes type=\"%1\" number=\"%2\"").arg(type, QString::number(n + 1)));
       else
             _xml.tagE(QString("bracket type=\"%1\" number=\"%2\" line-end=\"%3\"%4").arg(type, QString::number(n + 1), lineEnd, rest));
       _xml.etag();
+
+      if (!tl->endText().isEmpty() && tl->tick() != tick) {
+            _xml.stag("direction-type");
+            _xml.tag("words", tl->endText());
+            _xml.etag();
+            }
+
       /*
       if (offs)
             xml.tag("offset", offs);
       */
+
       directionETag(_xml, staff);
       }
 
@@ -4228,6 +4295,28 @@ static const FretDiagram* findFretDiagram(int strack, int etrack, int track, Seg
       }
 
 //---------------------------------------------------------
+//  commonAnnotations
+//---------------------------------------------------------
+
+static bool commonAnnotations(ExportMusicXml* exp, const Element* e, int sstaff)
+      {
+      if (e->isSymbol())
+            exp->symbol(toSymbol(e), sstaff);
+      else if (e->isTempoText())
+            exp->tempoText(toTempoText(e), sstaff);
+      else if (e->isStaffText() || e->isSystemText() || e->isText() || e->isInstrumentChange())
+            exp->words(toTextBase(e), sstaff);
+      else if (e->isDynamic())
+            exp->dynamic(toDynamic(e), sstaff);
+      else if (e->isRehearsalMark())
+            exp->rehearsal(toRehearsalMark(e), sstaff);
+      else
+            return false;
+
+      return true;
+      }
+
+//---------------------------------------------------------
 //  annotations
 //---------------------------------------------------------
 
@@ -4235,7 +4324,7 @@ static const FretDiagram* findFretDiagram(int strack, int etrack, int track, Seg
 // in MusicXML they are combined in the harmony element. This means they have to be matched.
 // TODO: replace/repair current algorithm (which can only handle one FRET_DIAGRAM and one HARMONY)
 
-static void annotations(ExportMusicXml* exp, XmlWriter&, int strack, int etrack, int track, int sstaff, Segment* seg)
+static void annotations(ExportMusicXml* exp, int strack, int etrack, int track, int sstaff, Segment* seg)
       {
       if (seg->segmentType() == SegmentType::ChordRest) {
 
@@ -4250,40 +4339,20 @@ static void annotations(ExportMusicXml* exp, XmlWriter&, int strack, int etrack,
                         wtrack = findTrackForAnnotations(e->track(), seg);
 
                   if (track == wtrack) {
-                        switch (e->type()) {
-                              case ElementType::SYMBOL:
-                                    exp->symbol(static_cast<const Symbol*>(e), sstaff);
-                                    break;
-                              case ElementType::TEMPO_TEXT:
-                                    exp->tempoText(static_cast<const TempoText*>(e), sstaff);
-                                    break;
-                              case ElementType::STAFF_TEXT:
-                              case ElementType::TEXT:
-                              case ElementType::INSTRUMENT_CHANGE:
-                                    exp->words(static_cast<const Text*>(e), sstaff);
-                                    break;
-                              case ElementType::DYNAMIC:
-                                    exp->dynamic(static_cast<const Dynamic*>(e), sstaff);
-                                    break;
-                              case ElementType::HARMONY:
-                                    // qDebug("annotations seg %p found harmony %p", seg, e);
-                                    exp->harmony(static_cast<const Harmony*>(e), fd /*, sstaff */);
-                                    fd = 0; // make sure to write only once ...
-                                    break;
-                              case ElementType::REHEARSAL_MARK:
-                                    exp->rehearsal(static_cast<const RehearsalMark*>(e), sstaff);
-                                    break;
-                              case ElementType::FIGURED_BASS: // handled separately by figuredBass()
-                              case ElementType::FRET_DIAGRAM: // handled using findFretDiagram()
-                              case ElementType::JUMP:         // ignore
-                                    break;
-                              default:
-                                    qDebug("annotations: direction type %s at tick %d not implemented",
-                                           Element::name(e->type()), seg->tick().ticks());
-                                    break;
+                        if (commonAnnotations(exp, e, sstaff))
+                              ;  // already handled
+                        else if (e->isHarmony()) {
+                              // qDebug("annotations seg %p found harmony %p", seg, e);
+                              exp->harmony(toHarmony(e), fd);
+                              fd = nullptr; // make sure to write only once ...
                               }
+                        else if (e->isFermata() || e->isFiguredBass() || e->isFretDiagram() || e->isJump())
+                              ;  // handled separately by chordAttributes(), figuredBass(), findFretDiagram() or ignored
+                        else
+                              qDebug("annotations: direction type %s at tick %d not implemented",
+                                     Element::name(e->type()), seg->tick().ticks());
                         }
-                  } // for
+                  }
             if (fd)
                   // found fd but no harmony, cannot write (MusicXML would be invalid)
                   qDebug("annotations seg %p found fretboard diagram %p w/o harmony: cannot write",
@@ -4726,9 +4795,11 @@ void ExportMusicXml::print(const Measure* const m, const int partNr, const int f
 
       bool prevMeasLineBreak = false;
       bool prevMeasPageBreak = false;
+      bool prevMeasSectionBreak = false;
       if (previousMeasure) {
             prevMeasLineBreak = previousMeasure->lineBreak();
             prevMeasPageBreak = previousMeasure->pageBreak();
+            prevMeasSectionBreak = previousMeasure->sectionBreak();
             }
 
       if (currentSystem != NoSystem) {
@@ -4742,7 +4813,7 @@ void ExportMusicXml::print(const Measure* const m, const int partNr, const int f
                         newThing = " new-page=\"yes\"";
                   }
             else if (preferences.musicxmlExportBreaks() == MusicxmlExportBreaks::MANUAL) {
-                  if (currentSystem == NewSystem && prevMeasLineBreak)
+                  if (currentSystem == NewSystem && (prevMeasLineBreak || prevMeasSectionBreak))
                         newThing = " new-system=\"yes\"";
                   else if (currentSystem == NewPage && prevMeasPageBreak)
                         newThing = " new-page=\"yes\"";
@@ -5139,6 +5210,15 @@ static void partList(XmlWriter& xml, Score* score, const QList<Part*>& il, MxmlI
       }
 
 //---------------------------------------------------------
+//  tickIsInMiddleOfMeasure
+//---------------------------------------------------------
+
+static bool tickIsInMiddleOfMeasure(const Fraction ti, const Measure* m)
+      {
+      return ti != m->tick() && ti != m->endTick();
+      }
+
+//---------------------------------------------------------
 //  writeElement
 //---------------------------------------------------------
 
@@ -5148,78 +5228,53 @@ static void partList(XmlWriter& xml, Score* score, const QList<Part*>& il, MxmlI
 
 void ExportMusicXml::writeElement(Element* el, const Measure* m, int sstaff, bool useDrumset)
       {
-      switch (el->type()) {
-
-            case ElementType::CLEF:
-                  {
-                  // output only clef changes, not generated clefs
-                  // at line beginning
-                  // also ignore clefs at the start of a measure,
-                  // these have already been output
-                  // also ignore clefs at the end of a measure
-                  // these will be output at the start of the next measure
-                  const Clef* cle = static_cast<const Clef*>(el);
-                  Fraction ti = cle->segment()->tick();
-                  clefDebug("exportxml: clef in measure ti=%d ct=%d gen=%d", ti, int(cle->clefType()), el->generated());
-                  if (el->generated()) {
-                        clefDebug("exportxml: generated clef not exported");
-                        break;
-                        }
-                  if (!el->generated() && ti != m->tick() && ti != m->endTick())
-                        clef(sstaff, cle->clefType(), color2xml(cle));
-                  else {
-                        clefDebug("exportxml: clef not exported");
-                        }
+      if (el->isClef()) {
+            // output only clef changes, not generated clefs
+            // at line beginning
+            // also ignore clefs at the start of a measure,
+            // these have already been output
+            // also ignore clefs at the end of a measure
+            // these will be output at the start of the next measure
+            const auto cle = toClef(el);
+            const auto ti = cle->segment()->tick();
+            clefDebug("exportxml: clef in measure ti=%d ct=%d gen=%d", ti, int(cle->clefType()), el->generated());
+            if (el->generated()) {
+                  clefDebug("exportxml: generated clef not exported");
                   }
-                  break;
-
-            case ElementType::KEYSIG:
-                  // ignore
-                  break;
-
-            case ElementType::TIMESIG:
-                  // ignore
-                  break;
-
-            case ElementType::CHORD:
-                  {
-                  Chord* c = static_cast<Chord*>(el);
-                  const auto ll = &c->lyrics();
-                  // ise grace after
-                  if (c) {
-                        for (Chord* g : c->graceNotesBefore()) {
-                              chord(g, sstaff, ll, useDrumset);
-                              }
-                        chord(c, sstaff, ll, useDrumset);
-                        for (Chord* g : c->graceNotesAfter()) {
-                              chord(g, sstaff, ll, useDrumset);
-                              }
-                        }
-                  break;
-                  }
-            case ElementType::REST:
-                  rest((Rest*)el, sstaff);
-                  break;
-
-            case ElementType::BAR_LINE:
-                  // Following must be enforced (ref MusicXML barline.dtd):
-                  // If location is left, it should be the first element in the measure;
-                  // if location is right, it should be the last element.
-                  // implementation note: BarLineType::START_REPEAT already written by barlineLeft()
-                  // any bars left should be "middle"
-                  // TODO: print barline only if middle
-                  // if (el->subtype() != BarLineType::START_REPEAT)
-                  //       bar((BarLine*) el);
-                  break;
-            case ElementType::BREATH:
-                  // ignore, already exported as note articulation
-                  break;
-
-            default:
-                  qDebug("ExportMusicXml::write unknown segment type %s", el->name());
-                  break;
+            else if (!el->generated() && tickIsInMiddleOfMeasure(ti, m))
+                  clef(sstaff, cle->clefType(), color2xml(cle));
+            else
+                  clefDebug("exportxml: clef not exported");
             }
-
+      else if (el->isChord()) {
+            const auto c = toChord(el);
+            const auto ll = &c->lyrics();
+            // ise grace after
+            if (c) {
+                  for (const auto g : c->graceNotesBefore()) {
+                        chord(g, sstaff, ll, useDrumset);
+                        }
+                  chord(c, sstaff, ll, useDrumset);
+                  for (const auto g : c->graceNotesAfter()) {
+                        chord(g, sstaff, ll, useDrumset);
+                        }
+                  }
+            }
+      else if (el->isRest()) {
+            const auto r = toRest(el);
+            if (!(r->isGap()))
+                  rest(r, sstaff);
+            }
+      else if (el->isBarLine()) {
+            const auto barln = toBarLine(el);
+            if (tickIsInMiddleOfMeasure(barln->tick(), m))
+                  barlineMiddle(barln);
+            }
+      else if (el->isKeySig() || el->isTimeSig() || el->isBreath()) {
+            // handled elsewhere
+            }
+      else
+            qDebug("ExportMusicXml::write unknown segment type %s", el->name());
       }
 
 //---------------------------------------------------------
@@ -5291,6 +5346,101 @@ static void writeInstrumentDetails(XmlWriter& xml, const Part* part)
       }
 
 //---------------------------------------------------------
+//  annotationsWithoutNote
+//---------------------------------------------------------
+
+/**
+ Write the annotations that could not be attached to notes.
+ */
+
+static void annotationsWithoutNote(ExportMusicXml* exp, const int strack, const int staves, const Measure* const measure)
+      {
+      for (auto segment = measure->first(); segment; segment = segment->next()) {
+            if (segment->segmentType() == SegmentType::ChordRest) {
+                  for (const auto element : segment->annotations()) {
+                        if (!element->isFiguredBass() && !element->isHarmony()) {       // handled elsewhere
+                              const auto wtrack = findTrackForAnnotations(element->track(), segment); // track to write annotation
+                              if (strack <= element->track() && element->track() < (strack + VOICES * staves) && wtrack < 0) {
+                                    exp->moveToTick(element->tick());
+                                    commonAnnotations(exp, element, staves > 1 ? 1 : 0);
+                                    }
+                              }
+                        }
+                  }
+
+            }
+      }
+
+//---------------------------------------------------------
+//  MeasureNumberStateHandler
+//---------------------------------------------------------
+
+/**
+ State handler used to calculate measure number including implict flag.
+ To be called once at the start of each measure in a part.
+ */
+
+class MeasureNumberStateHandler final
+      {
+public:
+      MeasureNumberStateHandler();
+      void updateForMeasure(const Measure* const m);
+      QString measureNumber() const;
+      bool isFirstActualMeasure() const;
+private:
+      void init();
+      int _measureNo;                     // number of next regular measure
+      int _irregularMeasureNo;            // number of next irregular measure
+      int _pickupMeasureNo;               // number of next pickup measure
+      QString _cachedAttributes;          // attributes calculated by updateForMeasure()
+      };
+
+MeasureNumberStateHandler::MeasureNumberStateHandler()
+      {
+      init();
+      }
+
+void MeasureNumberStateHandler::init()
+      {
+      _measureNo = 1;
+      _irregularMeasureNo = 1;
+      _pickupMeasureNo = 1;
+      }
+
+
+void MeasureNumberStateHandler::updateForMeasure(const Measure* const m)
+      {
+      // restart measure numbering after a section break if startWithMeasureOne is set
+      const auto previousMeasure = m->prevMeasure();
+      if (previousMeasure) {
+            const auto layoutSectionBreak = previousMeasure->sectionBreakElement();
+            if (layoutSectionBreak && layoutSectionBreak->startWithMeasureOne())
+                  init();
+            }
+
+      // update measure numers and cache result
+      _cachedAttributes = " number=";
+      if ((_irregularMeasureNo + _measureNo) == 2 && m->irregular()) {
+            _cachedAttributes += "\"0\" implicit=\"yes\"";
+            _pickupMeasureNo++;
+            }
+      else if (m->irregular())
+            _cachedAttributes += QString("\"X%1\" implicit=\"yes\"").arg(_irregularMeasureNo++);
+      else
+            _cachedAttributes += QString("\"%1\"").arg(_measureNo++);
+      }
+
+QString MeasureNumberStateHandler::measureNumber() const
+      {
+      return _cachedAttributes;
+      }
+
+bool MeasureNumberStateHandler::isFirstActualMeasure() const
+      {
+      return (_irregularMeasureNo + _measureNo + _pickupMeasureNo) == 4;
+      }
+
+//---------------------------------------------------------
 //  write
 //---------------------------------------------------------
 
@@ -5327,8 +5477,7 @@ void ExportMusicXml::write(QIODevice* dev)
       _xml << "<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 3.1 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n";
       _xml.stag("score-partwise version=\"3.1\"");
 
-      const MeasureBase* measure = _score->measures()->first();
-      work(measure);
+      work(_score->measures()->first());
 
       identification(_xml, _score);
 
@@ -5337,13 +5486,13 @@ void ExportMusicXml::write(QIODevice* dev)
             credits(_xml);
             }
 
-      const QList<Part*>& il = _score->parts();
+      const auto& il = _score->parts();
       partList(_xml, _score, il, instrMap);
 
       int staffCount = 0;
 
       for (int idx = 0; idx < il.size(); ++idx) {
-            Part* part = il.at(idx);
+            const auto part = il.at(idx);
             _tick = { 0,1 };
             _xml.stag(QString("part id=\"P%1\"").arg(idx+1));
 
@@ -5355,29 +5504,20 @@ void ExportMusicXml::write(QIODevice* dev)
             _trillStop.clear();
             initInstrMap(instrMap, part->instruments(), _score);
 
-            int measureNo = 1;          // number of next regular measure
-            int irregularMeasureNo = 1; // number of next irregular measure
-            int pickupMeasureNo = 1;    // number of next pickup measure
+            MeasureNumberStateHandler mnsh;
 
             FigBassMap fbMap;           // pending figured bass extends
 
-            for (MeasureBase* mb = _score->measures()->first(); mb; mb = mb->next()) {
-                  if (mb->type() != ElementType::MEASURE)
+            for (auto mb = _score->measures()->first(); mb; mb = mb->next()) {
+                  if (!mb->isMeasure())
                         continue;
-                  Measure* m = static_cast<Measure*>(mb);
-
+                  const auto m = toMeasure(mb);
 
                   // pickup and other irregular measures need special care
-                  QString measureTag = "measure number=";
-                  if ((irregularMeasureNo + measureNo) == 2 && m->irregular()) {
-                        measureTag += "\"0\" implicit=\"yes\"";
-                        pickupMeasureNo++;
-                        }
-                  else if (m->irregular())
-                        measureTag += QString("\"X%1\" implicit=\"yes\"").arg(irregularMeasureNo++);
-                  else
-                        measureTag += QString("\"%1\"").arg(measureNo++);
-                  const bool isFirstActualMeasure = (irregularMeasureNo + measureNo + pickupMeasureNo) == 4;
+                  QString measureTag = "measure";
+                  mnsh.updateForMeasure(m);
+                  measureTag += mnsh.measureNumber();
+                  const bool isFirstActualMeasure = mnsh.isFirstActualMeasure();
 
                   if (preferences.getBool(PREF_EXPORT_MUSICXML_EXPORTLAYOUT))
                         measureTag += QString(" width=\"%1\"").arg(QString::number(m->bbox().width() / DPMM / millimeters * tenths,'f',2));
@@ -5442,13 +5582,13 @@ void ExportMusicXml::write(QIODevice* dev)
 
                         int sstaff = (staves > 1) ? st - strack + VOICES : 0;
                         sstaff /= VOICES;
-                        for (Segment* seg = m->first(); seg; seg = seg->next()) {
-                              Element* el = seg->element(st);
+                        for (auto seg = m->first(); seg; seg = seg->next()) {
+                              const auto el = seg->element(st);
                               if (!el) {
                                     continue;
                                     }
                               // must ignore start repeat to prevent spurious backup/forward
-                              if (el->type() == ElementType::BAR_LINE && static_cast<BarLine*>(el)->barLineType() == BarLineType::START_REPEAT)
+                              if (el->isBarLine() && toBarLine(el)->barLineType() == BarLineType::START_REPEAT)
                                     continue;
 
                               // generate backup or forward to the start time of the element
@@ -5460,15 +5600,15 @@ void ExportMusicXml::write(QIODevice* dev)
                               // handle annotations and spanners (directions attached to this note or rest)
                               if (el->isChordRest()) {
                                     _attr.doAttr(_xml, false);
-                                    annotations(this, _xml, strack, etrack, st, sstaff, seg);
+                                    annotations(this, strack, etrack, st, sstaff, seg);
                                     // look for more harmony
-                                    for (Segment* seg1 = seg->next(); seg1; seg1 = seg1->next()) {
+                                    for (auto seg1 = seg->next(); seg1; seg1 = seg1->next()) {
                                           if (seg1->isChordRestType()) {
-                                                Element* el1 = seg1->element(st);
+                                                const auto el1 = seg1->element(st);
                                                 if (el1) // found a ChordRest, next harmony will be attach to this one
                                                       break;
-                                                for (Element* annot : seg1->annotations()) {
-                                                      if (annot->type() == ElementType::HARMONY && annot->track() == st)
+                                                for (auto annot : seg1->annotations()) {
+                                                      if (annot->isHarmony() && annot->track() == st)
                                                             harmony(toHarmony(annot), 0, (seg1->tick() - seg->tick()).ticks() / div);
                                                       }
                                                 }
@@ -5489,6 +5629,10 @@ void ExportMusicXml::write(QIODevice* dev)
                               } // for (Segment* seg = ...
                         _attr.stop(_xml);
                         } // for (int st = ...
+
+                  // write the annotations that could not be attached to notes
+                  annotationsWithoutNote(this, strack, staves, m);
+
                   // move to end of measure (in case of incomplete last voice)
 #ifdef DEBUG_TICK
                   qDebug("end of measure");
@@ -5632,7 +5776,7 @@ void ExportMusicXml::harmony(Harmony const* const h, FretDiagram const* const fd
       // since this was at once time the only way to get a chord to appear over beat 3 in an empty 4/4 measure
       // but the value was calculated incorrectly (should be divided by spatium) and would be better off using offset anyhow
       // since we now support placement of chord symbols over "empty" beats directly,
-      // and wedon't generally export position info for other elements
+      // and we don't generally export position info for other elements
       // it's just as well to not bother doing so here
       //double rx = h->offset().x()*10;
       //QString relative;
@@ -5736,11 +5880,30 @@ void ExportMusicXml::harmony(Harmony const* const h, FretDiagram const* const fd
                   _xml.stag(QString("harmony print-frame=\"yes\""));     // .append(relative));
             else
                   _xml.stag(QString("harmony print-frame=\"no\""));      // .append(relative));
-            _xml.stag("root");
-            _xml.tag("root-step text=\"\"", "C");
-            _xml.etag();       // root
-            QString k = "kind text=\"" + h->hTextName() + "\"";
-            _xml.tag(k, "none");
+            switch (h->harmonyType()) {
+                  case HarmonyType::NASHVILLE: {
+                        _xml.tag("function", h->hFunction());
+                        QString k = "kind text=\"" + h->hTextName() + "\"";
+                        _xml.tag(k, "none");
+                        }
+                        break;
+                  case HarmonyType::ROMAN: {
+                        // TODO: parse?
+                        _xml.tag("function", h->hTextName());
+                        QString k = "kind text=\"\"";
+                        _xml.tag(k, "none");
+                        }
+                        break;
+                  case HarmonyType::STANDARD:
+                  default: {
+                        _xml.stag("root");
+                        _xml.tag("root-step text=\"\"", "C");
+                        _xml.etag();       // root
+                        QString k = "kind text=\"" + h->hTextName() + "\"";
+                        _xml.tag(k, "none");
+                        }
+                        break;
+                  }
             _xml.etag();       // harmony
 #if 0
             // prior to 2.0, MuseScore exported unrecognized chords as plain text

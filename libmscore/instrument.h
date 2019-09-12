@@ -122,8 +122,9 @@ class Channel {
       bool _mute;
       bool _solo;
 
-      // flags whether the user has changed the bank controller as opposed to switchExpressive
-      bool _userBankController = false;
+      // MuseScore General-specific SND flags:
+      bool _userBankController = false;   // if the user has changed the bank controller as opposed to switchExpressive
+      bool _switchedToExpressive = false; // if the patch has been automatically switched to and expr variant
 
       mutable std::vector<MidiCoreEvent> _init;
       mutable bool _mustUpdateInit = true;
@@ -138,7 +139,7 @@ public:
 
       enum class Prop : char {
             VOLUME, PAN, CHORUS, REVERB, NAME, DESCR, PROGRAM, BANK, COLOR,
-            SOLOMUTE, SOLO, MUTE, SYNTI, CHANNEL
+            SOLOMUTE, SOLO, MUTE, SYNTI, CHANNEL, USER_BANK_CONTROL
             };
 
 private:
@@ -182,7 +183,7 @@ public:
 
       // If the bank controller is set by the user or not
       bool userBankController() const           { return _userBankController; }
-      void setUserBankController(bool val)      { _userBankController = val; }
+      void setUserBankController(bool val);
 
       QList<NamedEventList> midiActions;
       QList<MidiArticulation> articulation;

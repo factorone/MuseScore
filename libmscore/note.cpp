@@ -1100,7 +1100,7 @@ bool Note::isNoteName() const
 
 void Note::draw(QPainter* painter) const
       {
-      if (_hidden || _fretHidden)
+      if (_hidden)
             return;
 
       QColor c(curColor());
@@ -1111,6 +1111,11 @@ void Note::draw(QPainter* painter) const
       if (tablature) {
             const Staff* st = staff();
             const StaffType* tab = st->staffType(tick());
+            if (tieBack() && !tab->showBackTied()) {
+                  if (chord()->measure()->system() == tieBack()->startNote()->chord()->measure()->system() && el().size() == 0)
+                        // fret should be hidden, so return without drawing it
+                        return;
+                  }
             // draw background, if required (to hide a segment of string line or to show a fretting conflict)
             if (!tab->linesThrough() || fretConflict()) {
                   qreal d  = spatium() * .1;
@@ -1954,13 +1959,9 @@ void Note::layout()
             const StaffType* tab = st->staffType(tick());
             qreal mags = magS();
             bool paren = false;
-            _fretHidden = false;
             if (tieBack() && !tab->showBackTied()) {
-                  _fretHidden = false;
-                  if (el().size() > 0)
+                  if (chord()->measure() != tieBack()->startNote()->chord()->measure() || el().size() > 0)
                         paren = true;
-                  else
-                        _fretHidden = true;
                   }
             // not complete but we need systems to be layouted to add parenthesis
             if (fixed())
@@ -1998,24 +1999,6 @@ void Note::layout2()
       {
       // for standard staves this is done in Score::layoutChords3()
       // so that the results are available there
-
-      if (staff()->isTabStaff(chord()->tick())) {
-            const Staff* st = staff();
-            const StaffType* tab = st->staffType(tick());
-            qreal mags = magS();
-            bool paren = false;
-            _fretHidden = false;
-            if (tieBack() && !tab->showBackTied() && !_fretString.startsWith("(")) {   // skip back-tied notes if not shown but between () if on another system
-                  if (chord()->measure()->system() != tieBack()->startNote()->chord()->measure()->system() || el().size() > 0)
-                        paren = true;
-                  else
-                        _fretHidden = true;
-                  }
-            if (paren)
-                  _fretString = QString("(%1)").arg(_fretString);
-            qreal w = tabHeadWidth(tab); // !! use _fretString
-            bbox().setRect(0.0, tab->fretBoxY() * mags, w, tab->fretBoxH() * mags);
-            }
 
       int dots = chord()->dots();
       if (dots) {
@@ -2384,7 +2367,11 @@ void Note::editDrag(EditData& ed)
       {
       Chord* ch = chord();
       Segment* seg = ch->segment();
-      if (seg) {
+      // adjust segment on plain drag or Shift+cursor,
+      // adjust note/chord for Ctrl+drag or plain cursor
+      if (seg &&
+          (((ed.buttons & Qt::LeftButton) && !(ed.modifiers & Qt::ControlModifier))
+           || (ed.modifiers & Qt::ShiftModifier))) {
             const Spatium deltaSp = Spatium(ed.delta.x() / spatium());
             seg->undoChangeProperty(Pid::LEADING_SPACE, seg->extraLeadingSpace() + deltaSp);
             }
@@ -2897,6 +2884,11 @@ Element* Note::prevInEl(Element* e)
       return *(i-1);
       }
 
+static bool tieValid(Tie* tie)
+      {
+      return (tie && !tie->segmentsEmpty());
+      }
+
 //---------------------------------------------------------
 //   nextElement
 //---------------------------------------------------------
@@ -2915,7 +2907,7 @@ Element* Note::nextElement()
                   Element* next = nextInEl(e); // return next element in _el
                   if (next)
                         return next;
-                  else if (_tieFor)
+                  else if (tieValid(_tieFor))
                         return _tieFor->frontSegment();
                   else if (!_spannerFor.empty()) {
                         for (auto i : _spannerFor) {
@@ -2941,7 +2933,7 @@ Element* Note::nextElement()
             case ElementType::ACCIDENTAL:
                   if (!_el.empty())
                         return _el[0];
-                  if (_tieFor)
+                  if (tieValid(_tieFor))
                         return _tieFor->frontSegment();
                   if (!_spannerFor.empty()) {
                         for (auto i : _spannerFor) {
@@ -2954,7 +2946,7 @@ Element* Note::nextElement()
             case ElementType::NOTE:
                   if (!_el.empty())
                         return _el[0];
-                  if (_tieFor)
+                  if (tieValid(_tieFor))
                         return _tieFor->frontSegment();
                   if (!_spannerFor.empty()) {
                         for (auto i : _spannerFor) {
@@ -2994,7 +2986,7 @@ Element* Note::prevElement()
                         return _el.back();
                   return this;
             case ElementType::GLISSANDO_SEGMENT:
-                  if (_tieFor)
+                  if (tieValid(_tieFor))
                         return _tieFor->frontSegment();
                   else if (!_el.empty())
                         return _el.back();
@@ -3018,7 +3010,7 @@ Element* Note::lastElementBeforeSegment()
                         return i->spannerSegments().front();
                   }
             }
-      if (_tieFor)
+      if (tieValid(_tieFor))
             return _tieFor->frontSegment();
       if (!_el.empty())
             return _el.back();
@@ -3108,9 +3100,10 @@ std::vector<Note*> Note::tiedNotes() const
 
       notes.push_back(note);
       while (note->tieFor()) {
-            if (std::find(notes.begin(), notes.end(), note->tieFor()->endNote()) != notes.end())
+            Note* endNote = note->tieFor()->endNote();
+            if (!endNote || std::find(notes.begin(), notes.end(), endNote) != notes.end())
                   break;
-            note = note->tieFor()->endNote();
+            note = endNote;
             notes.push_back(note);
             }
       return notes;

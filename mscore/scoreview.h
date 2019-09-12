@@ -19,6 +19,7 @@
 #include "libmscore/mscore.h"
 #include "libmscore/mscoreview.h"
 #include "libmscore/pos.h"
+#include "libmscore/harmony.h"
 
 namespace Ms {
 
@@ -120,6 +121,9 @@ class ScoreView : public QWidget, public MuseScoreView {
       QTimer* extendNoteTimer; // single-shot timer for initial advancement when a note is held
       bool allowRealtimeRests; // Allow entering rests in realtime mode? (See note above)
 
+      bool tripleClickPending = false;
+      bool popupActive = false;
+
       // Loop In/Out marks in the score
       PositionCursor* _curLoopIn;
       PositionCursor* _curLoopOut;
@@ -171,6 +175,8 @@ class ScoreView : public QWidget, public MuseScoreView {
 
       void mousePressEventNormal(QMouseEvent*);
       void escapeCmd();
+      bool startTextEditingOnMouseRelease(QMouseEvent*);
+      void adjustCursorForTextEditing(QMouseEvent*);
 
       void constraintCanvas(int *dxx, int *dyy);
       void contextItem(Element*);
@@ -196,8 +202,8 @@ class ScoreView : public QWidget, public MuseScoreView {
       void figuredBassEndEdit();
       void realtimeAdvance(bool allowRests);
       void cmdAddFret(int fret);
-      void cmdAddChordName();
-      void cmdAddText(Tid tid);
+      void cmdAddChordName(HarmonyType ht);
+      void cmdAddText(Tid tid, Tid customTid = Tid::DEFAULT);
       void cmdEnterRest(const TDuration&);
       void cmdEnterRest();
       void cmdTuplet(int n, ChordRest*);
@@ -253,6 +259,7 @@ class ScoreView : public QWidget, public MuseScoreView {
       void cmdRealtimeAdvance();
       void extendCurrentNote();
       void seqStopped();
+      void tripleClickTimeOut();
 
    public slots:
       void setViewRect(const QRectF&);
@@ -266,7 +273,7 @@ class ScoreView : public QWidget, public MuseScoreView {
 
       void normalCut();
       void normalCopy();
-      void fotoModeCopy();
+      void fotoModeCopy(bool includeLink = false);
       bool normalPaste(Fraction scale = Fraction(1, 1));
       void normalSwap();
 
@@ -313,6 +320,7 @@ class ScoreView : public QWidget, public MuseScoreView {
       void zoom(qreal _mag, const QPointF& pos);
       void contextPopup(QContextMenuEvent* ev);
       bool editKeyLyrics();
+      bool editKeySticking();
       void dragScoreView(QMouseEvent* ev);
       void doDragElement(QMouseEvent* ev);
       void doDragLasso(QMouseEvent* ev);
@@ -341,6 +349,8 @@ class ScoreView : public QWidget, public MuseScoreView {
       qreal yoffset() const;
       void setOffset(qreal x, qreal y);
       QSizeF fsize() const;
+      void screenNext();
+      void screenPrev();
       void pageNext();
       void pagePrev();
       void pageTop();

@@ -179,6 +179,9 @@ enum class Sid {
       propertyDistance,
       articulationMag,
       articulationPosAbove,
+      articulationAnchorDefault,
+      articulationAnchorLuteFingering,
+      articulationAnchorOther,
       lastSystemFillLimit,
 
       hairpinPlacement,
@@ -241,12 +244,20 @@ enum class Sid {
       minHarmonyDistance,
       maxHarmonyBarDistance,
       harmonyPlacement,
+      romanNumeralPlacement,
+      nashvilleNumberPlacement,
 
       chordSymbolAPosAbove,
       chordSymbolAPosBelow,
 
       chordSymbolBPosAbove,
       chordSymbolBPosBelow,
+
+      romanNumeralPosAbove,
+      romanNumeralPosBelow,
+
+      nashvilleNumberPosAbove,
+      nashvilleNumberPosBelow,
 
       chordSymbolAFontFace,
       chordSymbolAFontSize,
@@ -273,6 +284,32 @@ enum class Sid {
       chordSymbolBFrameRound,
       chordSymbolBFrameFgColor,
       chordSymbolBFrameBgColor,
+
+      romanNumeralFontFace,
+      romanNumeralFontSize,
+      romanNumeralFontSpatiumDependent,
+      romanNumeralFontStyle,
+      romanNumeralColor,
+      romanNumeralAlign,
+      romanNumeralFrameType,
+      romanNumeralFramePadding,
+      romanNumeralFrameWidth,
+      romanNumeralFrameRound,
+      romanNumeralFrameFgColor,
+      romanNumeralFrameBgColor,
+
+      nashvilleNumberFontFace,
+      nashvilleNumberFontSize,
+      nashvilleNumberFontSpatiumDependent,
+      nashvilleNumberFontStyle,
+      nashvilleNumberColor,
+      nashvilleNumberAlign,
+      nashvilleNumberFrameType,
+      nashvilleNumberFramePadding,
+      nashvilleNumberFrameWidth,
+      nashvilleNumberFrameRound,
+      nashvilleNumberFrameFgColor,
+      nashvilleNumberFrameBgColor,
 
       capoPosition,
       fretNumMag,
@@ -322,6 +359,10 @@ enum class Sid {
       chordStyle,
       chordsXmlFile,
       chordDescriptionFile,
+      chordExtensionMag,
+      chordExtensionAdjust,
+      chordModifierMag,
+      chordModifierAdjust,
       concertPitch,
       createMultiMeasureRests,
       minEmptyMeasures,
@@ -395,18 +436,30 @@ enum class Sid {
       ottava22MBPlacement,
 
       ottava8VAText,
+      ottava8VAContinueText,
       ottava8VBText,
+      ottava8VBContinueText,
       ottava15MAText,
+      ottava15MAContinueText,
       ottava15MBText,
+      ottava15MBContinueText,
       ottava22MAText,
+      ottava22MAContinueText,
       ottava22MBText,
+      ottava22MBContinueText,
 
       ottava8VAnoText,
+      ottava8VAnoContinueText,
       ottava8VBnoText,
+      ottava8VBnoContinueText,
       ottava15MAnoText,
+      ottava15MAnoContinueText,
       ottava15MBnoText,
+      ottava15MBnoContinueText,
       ottava22MAnoText,
+      ottava22MAnoContinueText,
       ottava22MBnoText,
+      ottava22MBnoContinueText,
 
       ottavaPosAbove,
       ottavaPosBelow,
@@ -434,6 +487,7 @@ enum class Sid {
       tremoloBoxHeight,
       tremoloStrokeWidth,
       tremoloDistance,
+      tremoloPlacement,
       // TODO tremoloBeamLengthMultiplier,
       // TODO tremoloMaxBeamLength,
 
@@ -944,6 +998,24 @@ enum class Sid {
       instrumentChangeFrameFgColor,
       instrumentChangeFrameBgColor,
 
+      stickingFontFace,
+      stickingFontSize,
+      stickingFontSpatiumDependent,
+      stickingFontStyle,
+      stickingColor,
+      stickingAlign,
+      stickingOffset,
+      stickingPlacement,
+      stickingPosAbove,
+      stickingPosBelow,
+      stickingMinDistance,
+      stickingFrameType,
+      stickingFramePadding,
+      stickingFrameWidth,
+      stickingFrameRound,
+      stickingFrameFgColor,
+      stickingFrameBgColor,
+
       figuredBassFontFace,
       figuredBassFontSize,
       figuredBassFontSpatiumDependent,
@@ -1109,6 +1181,7 @@ enum class Sid {
       vibratoMinDistance,
       voltaMinDistance,
       figuredBassMinDistance,
+      tupletMinDistance,
 
       autoplaceEnabled,
 
@@ -1144,7 +1217,7 @@ class MStyle {
       void setCustomChordList(bool t) { _customChordList = t; }
       void checkChordList();
 
-      bool load(QFile* qf, bool ignore = false);
+      bool load(QFile* qf, bool ign = false);
       void load(XmlReader& e);
       void save(XmlWriter& xml, bool optimize);
       bool readProperties(XmlReader&);

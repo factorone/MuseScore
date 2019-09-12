@@ -1055,7 +1055,7 @@ static void readChord(Measure* m, Chord* chord, XmlReader& e)
                   chord->add(note);
                   }
             else if (tag == "Attribute" || tag == "Articulation") {
-                  Element* el = readArticulation(chord->score(), e);
+                  Element* el = readArticulation(chord, e);
                   if (el->isFermata()) {
                         if (!chord->segment())
                               chord->setParent(m->getSegment(SegmentType::ChordRest, e.tick()));
@@ -1088,7 +1088,7 @@ static void readRest(Measure* m, Rest* rest, XmlReader& e)
       while (e.readNextStartElement()) {
             const QStringRef& tag(e.name());
             if (tag == "Attribute" || tag == "Articulation") {
-                  Element* el = readArticulation(rest->score(), e);
+                  Element* el = readArticulation(rest, e);
                   if (el->isFermata()) {
                         if (!rest->segment())
                               rest->setParent(m->getSegment(SegmentType::ChordRest, e.tick()));
@@ -2106,7 +2106,7 @@ static void readMeasure(Measure* m, int staffIdx, XmlReader& e)
             else if (tag == "visible")
                   m->setStaffVisible(staffIdx, e.readInt());
             else if (tag == "slashStyle")
-                  m->setStaffSlashStyle(staffIdx, e.readInt());
+                  m->setStaffStemless(staffIdx, e.readInt());
             else if (tag == "Beam") {
                   Beam* beam = new Beam(m->score());
                   beam->setTrack(e.track());
@@ -2171,6 +2171,7 @@ static void readMeasure(Measure* m, int staffIdx, XmlReader& e)
                   }
             }
       e.checkTuplets();
+      m->connectTremolo();
       }
 
 //---------------------------------------------------------
@@ -2479,9 +2480,6 @@ static void readInstrument(Instrument *i, Part* p, XmlReader& e)
                  e.unknown();
             }
 
-      // Read single-note dynamics from template
-      i->setSingleNoteDynamicsFromTemplate();
-
       if (i->channel().empty()) {      // for backward compatibility
             Channel* a = new Channel;
             a->setName(Channel::DEFAULT_NAME);
@@ -2497,6 +2495,15 @@ static void readInstrument(Instrument *i, Part* p, XmlReader& e)
             if (i->channel()[0]->bank() == 0)
                   i->channel()[0]->setBank(128);
             }
+
+      // Fix user bank controller read
+      for (Channel* c : i->channel()) {
+            if (c->bank() == 0)
+                  c->setUserBankController(false);
+            }
+
+      // Read single-note dynamics from template
+      i->setSingleNoteDynamicsFromTemplate();
       }
 
 //---------------------------------------------------------
