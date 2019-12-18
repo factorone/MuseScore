@@ -1002,7 +1002,8 @@ void Measure::remove(Element* e)
                         // st currently points to an list element that is about to be removed
                         // make a copy now to use on undo/redo
                         StaffType* st = new StaffType(*stc->staffType());
-                        staff->removeStaffType(tick());
+                        if (!tick().isZero())
+                              staff->removeStaffType(tick());
                         stc->setStaffType(st);
                         }
                   MeasureBase::remove(e);
@@ -3094,7 +3095,7 @@ bool Measure::setProperty(Pid propertyId, const QVariant& value)
             default:
                   return MeasureBase::setProperty(propertyId, value);
             }
-      score()->setLayout(tick());
+      triggerLayout();
       return true;
       }
 
@@ -3193,16 +3194,29 @@ Element* Measure::nextElementStaff(int staff)
       Element* e = score()->selection().element();
       if (!e && !score()->selection().elements().isEmpty())
             e = score()->selection().elements().first();
+
+      // handle measure elements
+      if (e->parent() == this) {
+            auto i = std::find(el().begin(), el().end(), e);
+            if (i != el().end()) {
+                  if (++i != el().end()) {
+                        Element* resElement = *i;
+                        if (resElement)
+                              return resElement;
+                        }
+                  }
+            }
+
       for (; e && e->type() != ElementType::SEGMENT; e = e->parent()) {
             ;
       }
       Segment* seg = toSegment(e);
-      Segment* nextSegment = seg->next();
+      Segment* nextSegment = seg ? seg->next() : first();
       Element* next = seg->firstElementOfSegment(nextSegment, staff);
       if (next)
             return next;
 
-      return score()->firstElement();
+      return score()->lastElement();
       }
 
 //---------------------------------------------------------
@@ -3211,13 +3225,29 @@ Element* Measure::nextElementStaff(int staff)
 
 Element* Measure::prevElementStaff(int staff)
       {
+      Element* e = score()->selection().element();
+      if (!e && !score()->selection().elements().isEmpty())
+            e = score()->selection().elements().first();
+
+      // handle measure elements
+      if (e->parent() == this) {
+            auto i = std::find(el().rbegin(), el().rend(), e);
+            if (i != el().rend()) {
+                  if (++i != el().rend()) {
+                        Element* resElement = *i;
+                        if (resElement)
+                              return resElement;
+                        }
+                  }
+            }
+
       Measure* prevM = prevMeasureMM();
       if (prevM) {
             Segment* seg = prevM->last();
             if (seg)
-                  seg->lastElement(staff);
+                  return seg->lastElement(staff);
             }
-      return score()->lastElement();
+      return score()->firstElement();
       }
 
 //---------------------------------------------------------
@@ -3459,8 +3489,8 @@ bool Measure::endBarLineVisible() const
 
 void Measure::triggerLayout() const
       {
-      score()->setLayout(tick());
-      score()->setLayout(endTick());
+      if (prev() || next()) // avoid triggering layout before getting added to a score
+            score()->setLayout(tick(), endTick(), 0, score()->nstaves() - 1, this);
       }
 
 //---------------------------------------------------------
@@ -3539,8 +3569,10 @@ qreal Measure::createEndBarLines(bool isLastMeasureInSystem)
 #endif
       qreal oldWidth = width();
 
-      if (nm && nm->repeatStart() && !isLastMeasureInSystem && !repeatEnd()) {
-            // no barline, use StartBarLine of next measure
+      if (nm && nm->repeatStart() && !repeatEnd() && !isLastMeasureInSystem && next() == nm) {
+            // we may skip barline at end of a measure immediately before a start repeat:
+            // next measure is repeat start, this measure is not a repeat end,
+            // this is not last measure of system, no intervening frame
             if (!seg)
                   return 0.0;
             seg->setEnabled(false);
@@ -3932,13 +3964,18 @@ void Measure::addSystemTrailer(Measure* nm)
 
       // locate a time sig. in the next measure and, if found,
       // check if it has court. sig. turned off
-      TimeSig* ts;
+      TimeSig* ts = nullptr;
       bool showCourtesySig = false;
       Segment* s = findSegmentR(SegmentType::TimeSigAnnounce, _rtick);
       if (score()->genCourtesyTimesig() && !isFinalMeasure && !score()->floatMode()) {
             Segment* tss = nm->findSegmentR(SegmentType::TimeSig, Fraction(0,1));
             if (tss) {
-                  ts = toTimeSig(tss->element(0));
+                  int nstaves = score()->nstaves();
+                  for (int track = 0; track < nstaves * VOICES; track += VOICES) {
+                        ts = toTimeSig(tss->element(track));
+                        if (ts)
+                              break;
+                        }
                   if (ts && ts->showCourtesySig()) {
                         showCourtesySig = true;
                         // if due, create a new courtesy time signature for each staff
@@ -3948,7 +3985,6 @@ void Measure::addSystemTrailer(Measure* nm)
                               add(s);
                               }
                         s->setEnabled(true);
-                        int nstaves = score()->nstaves();
                         for (int track = 0; track < nstaves * VOICES; track += VOICES) {
                               TimeSig* nts = toTimeSig(tss->element(track));
                               if (!nts)

@@ -48,13 +48,6 @@ void Preferences::init(bool storeInMemoryOnly)
       bool checkExtensionsUpdateStartup = false;
 #endif
 
-#if defined(Q_OS_MAC) || defined(Q_OS_WIN)
-      // use system native file dialogs
-      // Qt file dialog is very slow on Windows and Mac
-      bool nativeDialogs           = true;
-#else
-      bool nativeDialogs           = false;    // don't use system native file dialogs
-#endif
       bool defaultUsePortAudio = false;
       bool defaultUsePulseAudio = false;
       bool defaultUseJackAudio = false;
@@ -99,6 +92,7 @@ void Preferences::init(bool storeInMemoryOnly)
             {PREF_APP_PLAYBACK_PLAYREPEATS,                        new BoolPreference(true)},
             {PREF_APP_PLAYBACK_LOOPTOSELECTIONONPLAY,              new BoolPreference(true)},
             {PREF_APP_USESINGLEPALETTE,                            new BoolPreference(false)},
+            {PREF_APP_PALETTESCALE,                                new DoublePreference(1.0)},
             {PREF_APP_STARTUP_FIRSTSTART,                          new BoolPreference(true)},
             {PREF_APP_STARTUP_SESSIONSTART,                        new EnumPreference(QVariant::fromValue(SessionStart::SCORE), false)},
             {PREF_APP_STARTUP_STARTSCORE,                          new StringPreference(":/data/My_First_Score.mscx", false)},
@@ -110,7 +104,7 @@ void Preferences::init(bool storeInMemoryOnly)
             {PREF_EXPORT_MUSICXML_EXPORTBREAKS,                    new EnumPreference(QVariant::fromValue(MusicxmlExportBreaks::ALL), false)},
             {PREF_EXPORT_MUSICXML_EXPORTLAYOUT,                    new BoolPreference(true, false)},
             {PREF_EXPORT_PDF_DPI,                                  new IntPreference(300, false)},
-            {PREF_EXPORT_PNG_RESOLUTION,                           new DoublePreference(300.0, false)},
+            {PREF_EXPORT_PNG_RESOLUTION,                           new DoublePreference(DPI, false)},
             {PREF_EXPORT_PNG_USETRANSPARENCY,                      new BoolPreference(true, false)},
             {PREF_IMPORT_GUITARPRO_CHARSET,                        new StringPreference("UTF-8", false)},
             {PREF_IMPORT_MUSICXML_IMPORTBREAKS,                    new BoolPreference(true, false)},
@@ -154,6 +148,7 @@ void Preferences::init(bool storeInMemoryOnly)
             {PREF_SCORE_STYLE_PARTSTYLEFILE,                       new StringPreference("", false)},
             {PREF_UI_CANVAS_BG_USECOLOR,                           new BoolPreference(true, false)},
             {PREF_UI_CANVAS_FG_USECOLOR,                           new BoolPreference(true, false)},
+            {PREF_UI_CANVAS_FG_USECOLOR_IN_PALETTES,               new BoolPreference(false, false)},
             {PREF_UI_CANVAS_BG_COLOR,                              new ColorPreference(QColor("#142433"), false)},
             {PREF_UI_CANVAS_FG_COLOR,                              new ColorPreference(QColor("#f9f9f9"), false)},
             {PREF_UI_CANVAS_BG_WALLPAPER,                          new StringPreference(QFileInfo(QString("%1%2").arg(mscoreGlobalShare).arg("wallpaper/background1.png")).absoluteFilePath(), false)},
@@ -173,7 +168,7 @@ void Preferences::init(bool storeInMemoryOnly)
             {PREF_UI_APP_RASTER_HORIZONTAL,                        new IntPreference(2)},
             {PREF_UI_APP_RASTER_VERTICAL,                          new IntPreference(2)},
             {PREF_UI_APP_SHOWSTATUSBAR,                            new BoolPreference(true)},
-            {PREF_UI_APP_USENATIVEDIALOGS,                         new BoolPreference(nativeDialogs)},
+            {PREF_UI_APP_USENATIVEDIALOGS,                         new BoolPreference(true)},
             {PREF_UI_PIANO_HIGHLIGHTCOLOR,                         new ColorPreference(QColor("#1259d0"))},
             {PREF_UI_SCORE_NOTE_DROPCOLOR,                         new ColorPreference(QColor("#1778db"))},
             {PREF_UI_SCORE_DEFAULTCOLOR,                           new ColorPreference(QColor("#000000"))},
@@ -226,7 +221,7 @@ QVariant Preferences::defaultValue(const QString key) const
       {
       checkIfKeyExists(key);
       Preference* pref = _allPreferences.value(key);
-      return pref->defaultValue();
+      return pref ? pref->defaultValue() : QVariant();
       }
 
 QSettings* Preferences::settings() const
@@ -455,6 +450,7 @@ QMap<QString, QVariant> Preferences::getDefaultLocalPreferences() {
       QMap<QString, QVariant> defaultLocalPreferences;
       for (QString s : {PREF_UI_CANVAS_BG_USECOLOR,
                         PREF_UI_CANVAS_FG_USECOLOR,
+                        PREF_UI_CANVAS_FG_USECOLOR_IN_PALETTES,
                         PREF_UI_CANVAS_BG_COLOR,
                         PREF_UI_CANVAS_FG_COLOR,
                         PREF_UI_CANVAS_BG_WALLPAPER,

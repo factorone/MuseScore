@@ -535,6 +535,7 @@ Element* ChordRest::drop(EditData& data)
             case ElementType::TEXT:
             case ElementType::STAFF_TEXT:
             case ElementType::SYSTEM_TEXT:
+            case ElementType::STICKING:
             case ElementType::STAFF_STATE:
             case ElementType::INSTRUMENT_CHANGE:
                   if (e->isInstrumentChange() && part()->instruments()->find(tick().ticks()) != part()->instruments()->end()) {
@@ -790,6 +791,8 @@ void ChordRest::removeDeleteBeam(bool beamed)
             _beam->remove(this);
             if (b->empty())
                   score()->undoRemoveElement(b);
+            else
+                  b->layout1();
             }
       if (!beamed && isChord())
             toChord(this)->layoutStem();
@@ -1156,7 +1159,7 @@ QString ChordRest::accessibleExtraInfo() const
             for (Element* e : segment()->annotations()) {
                   if (!score()->selectionFilter().canSelect(e))
                         continue;
-                  if (e->staffIdx() == staffIdx() )
+                  if (e->track() == track())
                         rez = QString("%1 %2").arg(rez).arg(e->screenReaderInfo());
                   }
 
@@ -1170,20 +1173,20 @@ QString ChordRest::accessibleExtraInfo() const
                       s->type() == ElementType::TIE    ) //ties are added in notes
                         continue;
 
-                  Segment* seg = 0;
                   if (s->type() == ElementType::SLUR) {
                         if (s->tick() == tick() && s->track() == track())
                               rez = QObject::tr("%1 Start of %2").arg(rez).arg(s->screenReaderInfo());
                         if (s->tick2() == tick() && s->track2() == track())
                               rez = QObject::tr("%1 End of %2").arg(rez).arg(s->screenReaderInfo());
                         }
-                  else  {
-                        if (s->tick() == tick() && s->staffIdx() == staffIdx())
+                  else if (s->staffIdx() == staffIdx()) {
+                        bool start = s->tick()  == tick();
+                        bool end   = s->tick2() == tick() + ticks();
+                        if (start && end)
+                              rez = QObject::tr("%1 Start and end of %2").arg(rez).arg(s->screenReaderInfo());
+                        else if (start)
                               rez = QObject::tr("%1 Start of %2").arg(rez).arg(s->screenReaderInfo());
-                        seg = segment()->next1MM(SegmentType::ChordRest);
-                        if (!seg)
-                              continue;
-                        if (s->tick2() == seg->tick() && s->staffIdx() == staffIdx())
+                        else if (end)
                               rez = QObject::tr("%1 End of %2").arg(rez).arg(s->screenReaderInfo());
                         }
                   }

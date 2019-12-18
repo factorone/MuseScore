@@ -19,7 +19,14 @@
 
 #include "palettemodel.h"
 
+#include "libmscore/beam.h"
+#include "libmscore/chordrest.h"
+#include "libmscore/icon.h"
+#include "libmscore/select.h"
 #include "palettetree.h"
+#include "palette.h"
+#include "preferences.h"
+#include "scoreaccessibility.h"
 
 namespace Ms {
 //---------------------------------------------------------
@@ -29,12 +36,60 @@ namespace Ms {
 PaletteTreeModel::PaletteTreeModel(std::unique_ptr<PaletteTree> tree, QObject* parent)
    : QAbstractItemModel(parent), _paletteTree(std::move(tree))
       {
-      connect(this, &QAbstractItemModel::dataChanged, this, &PaletteTreeModel::setTreeChanged);
+      connect(this, &QAbstractItemModel::dataChanged, this, &PaletteTreeModel::onDataChanged);
       connect(this, &QAbstractItemModel::layoutChanged, this, &PaletteTreeModel::setTreeChanged);
       connect(this, &QAbstractItemModel::modelReset, this, &PaletteTreeModel::setTreeChanged);
       connect(this, &QAbstractItemModel::rowsInserted, this, &PaletteTreeModel::setTreeChanged);
       connect(this, &QAbstractItemModel::rowsMoved, this, &PaletteTreeModel::setTreeChanged);
       connect(this, &QAbstractItemModel::rowsRemoved, this, &PaletteTreeModel::setTreeChanged);
+      }
+
+//---------------------------------------------------------
+//   PaletteTreeModel::onDataChanged
+//---------------------------------------------------------
+
+void PaletteTreeModel::onDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight, const QVector<int>& roles)
+      {
+      Q_UNUSED(topLeft);
+      Q_UNUSED(bottomRight);
+      static const std::set<int> nonPersistentRoles({ CellActiveRole, PaletteExpandedRole });
+
+      bool treeChanged = false;
+      for (int role : roles) {
+            if (!nonPersistentRoles.count(role)) {
+                  treeChanged = true;
+                  break;
+                  }
+            }
+
+      if (treeChanged)
+            setTreeChanged();
+      }
+
+//---------------------------------------------------------
+//   PaletteTreeModel::setTreeChanged
+//---------------------------------------------------------
+
+void PaletteTreeModel::setTreeChanged()
+      {
+      _treeChanged = true;
+      if (!_treeChangedSignalBlocked)
+            emit treeChanged();
+      }
+
+//---------------------------------------------------------
+//   PaletteTreeModel::blockTreeChanged
+//---------------------------------------------------------
+
+bool PaletteTreeModel::blockTreeChanged(bool block)
+      {
+      const bool wasBlocked = _treeChangedSignalBlocked;
+      _treeChangedSignalBlocked = block;
+
+      if (wasBlocked && !block && _treeChanged)
+            emit treeChanged();
+
+      return wasBlocked;
       }
 
 //---------------------------------------------------------
@@ -86,7 +141,7 @@ PalettePanel* PaletteTreeModel::findPalettePanel(const QModelIndex& index)
 //   PaletteTreeModel::findCell
 //---------------------------------------------------------
 
-const PaletteCell* PaletteTreeModel::findCell(const QModelIndex& index) const
+PaletteCellConstPtr PaletteTreeModel::findCell(const QModelIndex& index) const
       {
       if (const PalettePanel* pp = iptrToPalettePanel(index.internalPointer())) {
             const int row = index.row();
@@ -102,9 +157,9 @@ const PaletteCell* PaletteTreeModel::findCell(const QModelIndex& index) const
 //   PaletteTreeModel::findCell
 //---------------------------------------------------------
 
-PaletteCell* PaletteTreeModel::findCell(const QModelIndex& index)
+PaletteCellPtr PaletteTreeModel::findCell(const QModelIndex& index)
       {
-      return const_cast<PaletteCell*>(const_cast<const PaletteTreeModel*>(this)->findCell(index));
+      return std::const_pointer_cast<PaletteCell>(const_cast<const PaletteTreeModel*>(this)->findCell(index));
       }
 
 //---------------------------------------------------------
@@ -165,7 +220,7 @@ QModelIndex PaletteTreeModel::parent(const QModelIndex& modelIndex) const
 int PaletteTreeModel::rowCount(const QModelIndex& parent) const
       {
       if (!parent.isValid())
-            return palettes().size();
+            return int(palettes().size());
 
       void* iptr = parent.internalPointer();
 
@@ -199,40 +254,55 @@ QVariant PaletteTreeModel::data(const QModelIndex& index, int role) const
             switch (role) {
                   case Qt::DisplayRole:
                   case Qt::AccessibleTextRole:
-                        return qApp->translate("Palette", pp->name().toUtf8());
+                        return pp->translatedName();
                   case VisibleRole:
                         return pp->visible();
                   case CustomRole:
                         return pp->custom();
+                  case EditableRole:
+                        return pp->editable();
                   case GridSizeRole:
-                        return pp->gridSize();
+                        return pp->gridSize() * Palette::guiMag();
                   case DrawGridRole:
                         return pp->drawGrid();
+                  case PaletteExpandedRole:
+                        return pp->expanded();
                   // TODO showMore?
                   case PaletteTypeRole:
                         return QVariant::fromValue(pp->type());
+                  case PaletteContentTypeRole:
+                        return QVariant::fromValue(pp->contentType());
                   }
             return QVariant();
             }
 
-      if (const PaletteCell* cell = findCell(index)) {
+      if (PaletteCellConstPtr cell = findCell(index)) {
             switch (role) {
                   case Qt::DisplayRole: // TODO don't display cell names in palettes
                   case Qt::ToolTipRole:
-                  case Qt::AccessibleTextRole:
-                        return qApp->translate("Palette", cell->name.toUtf8());
+                        return cell->translatedName();
+                  case Qt::AccessibleTextRole: {
+                        QString name = cell->translatedName();
+                        ScoreAccessibility::makeReadable(name);
+                        return name;
+                        }
                   case Qt::DecorationRole: {
                         qreal extraMag = 1.0;
                         if (const PalettePanel* pp = iptrToPalettePanel(index.internalPointer()))
                               extraMag = pp->mag();
-                        return QIcon(new PaletteCellIconEngine(cell, extraMag));
+                        return QIcon(new PaletteCellIconEngine(cell, extraMag * Palette::guiMag()));
                         }
                   case PaletteCellRole:
-                        return QVariant::fromValue(cell);
+                        return QVariant::fromValue(cell.get());
                   case VisibleRole:
                         return cell->visible;
                   case CustomRole:
                         return cell->custom;
+                  case EditableRole: {
+                        if (const PalettePanel* pp = iptrToPalettePanel(index.internalPointer()))
+                              return pp->editable();
+                        return false;
+                        }
                   case MimeDataRole: {
                         QVariantMap map;
                         if (cell->element)
@@ -240,10 +310,20 @@ QVariant PaletteTreeModel::data(const QModelIndex& index, int role) const
                         map[PaletteCell::mimeDataFormat] = cell->mimeData();
                         return map;
                         }
+                  case CellActiveRole:
+                        return cell->active;
                   default:
                         break;
                   }
             return QVariant();
+            }
+
+      // data for root item
+      switch (role) {
+            case EditableRole:
+                  return true;
+            default:
+                  break;
             }
 
       return QVariant();
@@ -267,6 +347,50 @@ bool PaletteTreeModel::setData(const QModelIndex& index, const QVariant& value, 
                               return true;
                               }
                         return false;
+                  case EditableRole:
+                        if (value.canConvert<bool>()) {
+                              const bool val = value.toBool();
+                              if (val != pp->editable()) {
+                                    pp->setEditable(val);
+                                    emit dataChanged(index, index, { EditableRole });
+                                    // notify cells editability changed too
+                                    const QModelIndex childFirstIndex = PaletteTreeModel::index(0, 0, index);
+                                    const int rows = rowCount(index);
+                                    const QModelIndex childLastIndex = PaletteTreeModel::index(rows - 1, 0, index);
+                                    emit dataChanged(childFirstIndex, childLastIndex, { EditableRole });
+                              }
+                              return true;
+                        }
+                        return false;
+                  case PaletteExpandedRole:
+                        if (value.canConvert<bool>()) {
+                              const bool val = value.toBool();
+                              if (val != pp->expanded()) {
+                                    const bool singlePalette = preferences.getBool(PREF_APP_USESINGLEPALETTE);
+
+                                    if (singlePalette && val) {
+                                          for (auto& palette : palettes())
+                                                palette->setExpanded(false);
+                                          pp->setExpanded(val);
+
+                                          const QModelIndex parent = index.parent();
+                                          const int rows = rowCount(parent);
+                                          const QModelIndex first = PaletteTreeModel::index(0, 0, parent);
+                                          const QModelIndex last = PaletteTreeModel::index(rows - 1, 0, parent);
+                                          emit dataChanged(first, last, { PaletteExpandedRole });
+                                          }
+                                    else {
+                                          pp->setExpanded(val);
+                                          emit dataChanged(index, index, { PaletteExpandedRole });
+                                          }
+                                    }
+                              return true;
+                              }
+                        return false;
+                  case Qt::DisplayRole:
+                        pp->setName(value.toString());
+                        emit dataChanged(index, index, { Qt::DisplayRole, Qt::AccessibleTextRole });
+                        return true;
 //                   case CustomRole:
 //                         if (value.canConvert<bool>()) {
 //                               const bool val = value.toBool();
@@ -276,10 +400,7 @@ bool PaletteTreeModel::setData(const QModelIndex& index, const QVariant& value, 
 //                                     }
 //                               return true;
 //                               }
-                        return false;
-//                   case Qt::DisplayRole:
-//                   case Qt::AccessibleTextRole:
-//                         return pp->name();
+//                         return false;
 //                   case gridSizeRole:
 //                         return pp->gridSize();
 //                   case drawGridRole:
@@ -290,7 +411,7 @@ bool PaletteTreeModel::setData(const QModelIndex& index, const QVariant& value, 
             return false;
             }
 
-      if (PaletteCell* cell = findCell(index)) {
+      if (PaletteCellPtr cell = findCell(index)) {
             switch (role) {
 //                   case Qt::DisplayRole:
 //                   case Qt::ToolTipRole:
@@ -329,7 +450,7 @@ bool PaletteTreeModel::setData(const QModelIndex& index, const QVariant& value, 
 
                         if (map.contains(PaletteCell::mimeDataFormat)) {
                               const QByteArray cellMimeData = map[PaletteCell::mimeDataFormat].toByteArray();
-                              std::unique_ptr<PaletteCell> newCell(PaletteCell::readMimeData(cellMimeData));
+                              PaletteCellPtr newCell(PaletteCell::readMimeData(cellMimeData));
                               if (!newCell)
                                     return false;
                               *cell = std::move(*newCell);
@@ -366,6 +487,10 @@ QHash<int, QByteArray> PaletteTreeModel::roleNames() const
       roles[GridSizeRole] = "gridSize";
       roles[DrawGridRole] = "drawGrid";
       roles[CustomRole] = "custom";
+      roles[EditableRole] = "editable";
+      roles[PaletteExpandedRole] = "expanded";
+      roles[CellActiveRole] = "cellActive";
+      roles[Qt::AccessibleTextRole] = "accessibleText";
       return roles;
       }
 
@@ -401,7 +526,7 @@ QMimeData* PaletteTreeModel::mimeData(const QModelIndexList& indexes) const
       if (const PalettePanel* pp = findPalettePanel(indexes[0])) {
             mime->setData(PalettePanel::mimeDataFormat, pp->mimeData());
             }
-      else if (const PaletteCell* cell = findCell(indexes[0])) {
+      else if (PaletteCellConstPtr cell = findCell(indexes[0])) {
             mime->setData(mimeSymbolFormat, cell->element->mimeData(QPointF()));
             }
 
@@ -470,7 +595,7 @@ bool PaletteTreeModel::dropMimeData(const QMimeData* data, Qt::DropAction action
             if (row < 0 || row > pp->ncells())
                   return false;
 
-            std::unique_ptr<PaletteCell> cell;
+            PaletteCellPtr cell;
 
             if (data->hasFormat(PaletteCell::mimeDataFormat)) {
                   cell = PaletteCell::readMimeData(data->data(PaletteCell::mimeDataFormat));
@@ -626,6 +751,8 @@ bool PaletteTreeModel::insertRows(int row, int count, const QModelIndex& parent)
             for (int i = 0; i < count; ++i) {
                   std::unique_ptr<PalettePanel> p(new PalettePanel(PalettePanel::Type::Custom));
                   p->setName(QT_TRANSLATE_NOOP("Palette", "Custom"));
+                  p->setGrid(QSize(48, 48));
+                  p->setExpanded(true);
                   palettes().insert(palettes().begin() + row, std::move(p));
                   }
             endInsertRows();
@@ -639,12 +766,71 @@ bool PaletteTreeModel::insertRows(int row, int count, const QModelIndex& parent)
 
             beginInsertRows(parent, row, row + count - 1);
             for (int i = 0; i < count; ++i)
-                  panel->insertCell(row, std::unique_ptr<PaletteCell>(new PaletteCell));
+                  panel->insertCell(row, PaletteCellPtr(new PaletteCell));
             endInsertRows();
             return true;
             }
 
       return false;
+      }
+
+//---------------------------------------------------------
+//   PaletteTreeModel::insertPalettePanel
+//---------------------------------------------------------
+
+bool PaletteTreeModel::insertPalettePanel(std::unique_ptr<PalettePanel> pp, int row, const QModelIndex& parent)
+      {
+      if (row < 0 || row > int(palettes().size()) || parent != QModelIndex())
+            return false;
+      beginInsertRows(parent, row, row);
+      palettes().insert(palettes().begin() + row, std::move(pp));
+      endInsertRows();
+      return true;
+      }
+
+//---------------------------------------------------------
+//   PaletteTreeModel::updateCellsState
+//---------------------------------------------------------
+
+void PaletteTreeModel::updateCellsState(const Selection& sel, bool deactivateAll)
+      {
+      const ChordRest* cr = sel.cr();
+      const IconType beamIconType = cr ? Beam::iconType(cr->beamMode()) : IconType::NONE;
+
+      if (!sel.isSingle() || !cr)
+            deactivateAll = true;
+
+      const size_t npalettes = palettes().size();
+      for (size_t row = 0; row < npalettes; ++row) {
+            PalettePanel* palette = palettes()[row].get();
+            // TODO: should this be turned on for all palettes?
+            if (palette->type() != PalettePanel::Type::Beam)
+                  continue;
+
+            for (int ci = 0; ci < palette->ncells(); ++ci) {
+                  PaletteCellPtr cell = palette->cell(ci);
+                  if (deactivateAll)
+                        cell->active = false;
+                  else if (cell->element && cell->element->isIcon()) {
+                        const Icon* icon = toIcon(cell->element.get());
+                        cell->active = (icon->iconType() == beamIconType);
+                        }
+                  }
+
+            const QModelIndex parent = index(int(row), 0, QModelIndex());
+            const QModelIndex first = index(0, 0, parent);
+            const QModelIndex last = index(palette->ncells() - 1, 0, parent);
+            emit dataChanged(first, last, { CellActiveRole });
+            }
+      }
+
+//---------------------------------------------------------
+//   PaletteTreeModel::retranslate
+//---------------------------------------------------------
+
+void PaletteTreeModel::retranslate()
+      {
+      _paletteTree->retranslate();
       }
 
 //---------------------------------------------------------
@@ -762,14 +948,15 @@ void PaletteCellFilter::connectToModel(const QAbstractItemModel* model)
 
 class ExcludePaletteCellFilter : public PaletteCellFilter {
       const PalettePanel* excludePanel;
+      const QPersistentModelIndex panelIndex; // filter is valid as long as this index is valid too
 
    public:
-      ExcludePaletteCellFilter(const PalettePanel* p, QObject* parent = nullptr)
-         : PaletteCellFilter(parent), excludePanel(p) {}
+      ExcludePaletteCellFilter(const PalettePanel* p, QPersistentModelIndex index, QObject* parent = nullptr)
+         : PaletteCellFilter(parent), excludePanel(p), panelIndex(std::move(index)) {}
 
       bool acceptCell(const PaletteCell& cell) const override
             {
-            return -1 == excludePanel->findPaletteCell(cell, /* matchName */ false);
+            return panelIndex.isValid() && -1 == excludePanel->findPaletteCell(cell, /* matchName */ false);
             }
       };
 
@@ -782,7 +969,7 @@ class ExcludePaletteCellFilter : public PaletteCellFilter {
 PaletteCellFilter* PaletteTreeModel::getFilter(const QModelIndex& index) const
       {
       if (const PalettePanel* pp = findPalettePanel(index)) {
-            ExcludePaletteCellFilter* filter = new ExcludePaletteCellFilter(pp);
+            ExcludePaletteCellFilter* filter = new ExcludePaletteCellFilter(pp, index);
             filter->connectToModel(this);
             return filter;
             }
@@ -821,17 +1008,23 @@ bool FilterPaletteTreeModel::filterAcceptsRow(int sourceRow, const QModelIndex& 
       }
 
 //---------------------------------------------------------
-//   RecursiveFilterProxyModel::filterAcceptsRow
+//   PaletteCellFilterProxyModel::filterAcceptsRow
 //---------------------------------------------------------
 
-bool RecursiveFilterProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const
+bool PaletteCellFilterProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const
       {
-      if (QSortFilterProxyModel::filterAcceptsRow(sourceRow, sourceParent))
-            return true;
-
       const QAbstractItemModel* model = sourceModel();
       const QModelIndex rowIndex = model->index(sourceRow, 0, sourceParent);
       const int rowCount = model->rowCount(rowIndex);
+
+      if (rowCount == 0) {
+            if (QSortFilterProxyModel::filterAcceptsRow(sourceRow, sourceParent))
+                  return true;
+            // accept row if its parent is accepted by filter: necessary to be able to search by palette name
+            if (sourceParent.isValid() && QSortFilterProxyModel::filterAcceptsRow(sourceParent.row(), sourceParent.parent()))
+                  return true;
+            return false;
+            }
 
       for (int i = 0; i < rowCount; ++i) {
             if (filterAcceptsRow(i, rowIndex))

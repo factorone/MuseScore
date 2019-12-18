@@ -70,6 +70,8 @@
 #include "libmscore/breath.h"
 #include "libmscore/lyrics.h"
 #include "libmscore/accidental.h"
+#include "libmscore/articulation.h"
+#include "libmscore/fermata.h"
 
 namespace Ms {
 
@@ -299,7 +301,10 @@ void Inspector::update(Score* s)
                               ie = new InspectorFretDiagram(this);
                               break;
                         case ElementType::LAYOUT_BREAK:
-                              ie = new InspectorBreak(this);
+                              if (toLayoutBreak(element())->layoutBreakType() == LayoutBreak::Type::SECTION)
+                                    ie = new InspectorSectionBreak(this);
+                              else
+                                    ie = new InspectorBreak(this);
                               break;
                         case ElementType::BEND:
                               ie = new InspectorBend(this);
@@ -440,6 +445,23 @@ InspectorBreak::InspectorBreak(QWidget* parent)
       }
 
 //---------------------------------------------------------
+//   InspectorSectionBreak
+//---------------------------------------------------------
+
+InspectorSectionBreak::InspectorSectionBreak(QWidget* parent)
+   : InspectorBase(parent)
+      {
+      scb.setupUi(addWidget());
+
+      iList = {
+            { Pid::PAUSE,                   0, scb.pause,               scb.resetPause               },
+            { Pid::START_WITH_LONG_NAMES,   0, scb.startWithLongNames,  scb.resetStartWithLongNames  },
+            { Pid::START_WITH_MEASURE_ONE,  0, scb.startWithMeasureOne, scb.resetStartWithMeasureOne }
+            };
+      mapSignals();
+      }
+
+//---------------------------------------------------------
 //   InspectorStaffTypeChange
 //---------------------------------------------------------
 
@@ -560,6 +582,18 @@ InspectorArticulation::InspectorArticulation(QWidget* parent)
       }
 
 //---------------------------------------------------------
+//   setElement
+//---------------------------------------------------------
+
+void InspectorArticulation::setElement()
+      {
+      InspectorElementBase::setElement();
+      if (!ar.playArticulation->isChecked()) {
+            ar.gridWidget->setEnabled(false);
+            }
+      }
+
+//---------------------------------------------------------
 //   InspectorFermata
 //---------------------------------------------------------
 
@@ -575,6 +609,20 @@ InspectorFermata::InspectorFermata(QWidget* parent)
             };
       const std::vector<InspectorPanel> ppList = { { f.title, f.panel } };
       mapSignals(iiList, ppList);
+      }
+
+//---------------------------------------------------------
+//   setElement
+//---------------------------------------------------------
+
+void InspectorFermata::setElement()
+      {
+      InspectorElementBase::setElement();
+      if (!f.playArticulation->isChecked()) {
+            f.labelTimeStretch->setEnabled(false);
+            f.timeStretch->setEnabled(false);
+            f.resetTimeStretch->setEnabled(false);
+            }
       }
 
 //---------------------------------------------------------
@@ -904,7 +952,7 @@ void InspectorBend::propertiesClicked()
       Score* score = b->score();
       score->startCmd();
       mscore->currentScoreView()->editBendProperties(b);
-      score->setLayoutAll();
+      b->triggerLayoutAll();
       score->endCmd();
       }
 
@@ -938,7 +986,7 @@ void InspectorTremoloBar::propertiesClicked()
       Score* score = b->score();
       score->startCmd();
       mscore->currentScoreView()->editTremoloBarProperties(b);
-      score->setLayoutAll();
+      b->triggerLayoutAll();
       score->endCmd();
       }
 
@@ -1009,8 +1057,9 @@ InspectorStem::InspectorStem(QWidget* parent)
       s.setupUi(addWidget());
 
       const std::vector<InspectorItem> iiList = {
-            { Pid::LINE_WIDTH, 0, s.lineWidth,  s.resetLineWidth  },
-            { Pid::USER_LEN,   0, s.userLength, s.resetUserLength },
+            { Pid::LINE_WIDTH,     0, s.lineWidth,     s.resetLineWidth     },
+            { Pid::USER_LEN,       0, s.userLength,    s.resetUserLength    },
+            { Pid::STEM_DIRECTION, 0, s.stemDirection, s.resetStemDirection }
             };
       const std::vector<InspectorPanel> ppList = { { s.title, s.panel } };
       mapSignals(iiList, ppList);

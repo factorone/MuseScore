@@ -244,7 +244,7 @@ void MeasureBaseList::change(MeasureBase* ob, MeasureBase* nb)
 //---------------------------------------------------------
 
 Score::Score()
-   : ScoreElement(this), _is(this), _selection(this), _selectionFilter(this)
+   : ScoreElement(this), _selection(this), _selectionFilter(this)
       {
       Score::validScores.insert(this);
       _masterScore = 0;
@@ -256,9 +256,6 @@ Score::Score()
 
       _scoreFont = ScoreFont::fontFactory("emmentaler");
 
-      _pos[int(POS::CURRENT)] = Fraction(0,1);
-      _pos[int(POS::LEFT)]    = Fraction(0,1);
-      _pos[int(POS::RIGHT)]   = Fraction(0,1);
       _fileDivision           = MScore::division;
       _style  = MScore::defaultStyle();
 //      accInfo = tr("No selection");     // ??
@@ -319,6 +316,8 @@ Score::Score(MasterScore* parent, const MStyle& s)
 
 Score::~Score()
       {
+      Score::validScores.erase(this);
+
       foreach(MuseScoreView* v, viewer)
             v->removeScore();
       // deselectAll();
@@ -338,7 +337,6 @@ Score::~Score()
 
       qDeleteAll(_parts);
       qDeleteAll(_staves);
-      Score::validScores.erase(this);
 //      qDeleteAll(_pages);         // TODO: check
       _masterScore = 0;
 
@@ -387,6 +385,7 @@ void Score::onElementDestruction(Element* e)
             return;
             }
       score->selection().remove(e);
+      score->cmdState().unsetElement(e);
       for (MuseScoreView* v : score->viewer)
             v->onElementDestruction(e);
       }
@@ -515,7 +514,7 @@ void Score::rebuildTempoAndTimeSigMaps(Measure* measure)
                         continue;
                   qreal stretch = 0.0;
                   for (Element* e : segment.annotations()) {
-                        if (e->isFermata())
+                        if (e->isFermata() && toFermata(e)->play())
                               stretch = qMax(stretch, toFermata(e)->timeStretch());
                         else if (e->isTempoText()) {
                               TempoText* tt = toTempoText(e);
@@ -1391,7 +1390,7 @@ void Score::addElement(Element* element)
          || et == ElementType::FBOX
          ) {
             measures()->add(toMeasureBase(element));
-            setLayout(element->tick());
+            element->triggerLayout();
             return;
             }
 
@@ -1495,7 +1494,7 @@ void Score::addElement(Element* element)
             default:
                   break;
             }
-      setLayout(element->tick());
+      element->triggerLayout();
       }
 
 //---------------------------------------------------------
@@ -1588,7 +1587,7 @@ void Score::removeElement(Element* element)
                   Spanner* spanner = toSpanner(element);
                   if (et == ElementType::TEXTLINE && spanner->anchor() == Spanner::Anchor::NOTE)
                         break;
-                  setLayout(spanner->tick2());
+                  spanner->triggerLayout();
                   removeSpanner(spanner);
                   }
                   break;
@@ -1596,7 +1595,7 @@ void Score::removeElement(Element* element)
             case ElementType::OTTAVA:
                   {
                   Ottava* o = toOttava(element);
-                  setLayout(o->tick2());
+                  o->triggerLayout();
                   removeSpanner(o);
                   o->staff()->updateOttava();
                   cmdState().layoutFlags |= LayoutFlag::FIX_PITCH_VELO;
@@ -2760,7 +2759,7 @@ void Score::addAudioTrack()
 //   padToggle
 //---------------------------------------------------------
 
-void Score::padToggle(Pad n)
+void Score::padToggle(Pad n, const EditData& ed)
       {
       int oldDots = _is.duration().dots();
       switch (n) {
@@ -2795,7 +2794,21 @@ void Score::padToggle(Pad n)
                   _is.setDuration(TDuration::DurationType::V_128TH);
                   break;
             case Pad::REST:
-                  _is.setRest(!_is.rest());
+                  if (noteEntryMode()) {
+                        _is.setRest(!_is.rest());
+                        _is.setAccidentalType(AccidentalType::NONE);
+                        }
+                  else if (selection().isNone()) {
+                        ed.view->startNoteEntryMode();
+                        _is.setDuration(TDuration::DurationType::V_QUARTER);
+                        _is.setRest(true);
+                        }
+                  else {
+                        for (ChordRest* cr : getSelectedChordRests()) {
+                              if (!cr->isRest())
+                                    setNoteRest(cr->segment(), cr->track(), NoteVal(), cr->durationTypeTicks());
+                              }
+                        }
                   break;
             case Pad::DOT:
                   if ((_is.duration().dots() == 1) || (_is.duration() == TDuration::DurationType::V_1024TH))
@@ -2841,10 +2854,10 @@ void Score::padToggle(Pad n)
                   if (usingNoteEntryMethod(NoteEntryMethod::RHYTHM)) {
                         switch (oldDots) {
                               case 1:
-                                    padToggle(Pad::DOT);
+                                    padToggle(Pad::DOT, ed);
                                     break;
                               case 2:
-                                    padToggle(Pad::DOTDOT);
+                                    padToggle(Pad::DOTDOT, ed);
                                     break;
                               }
                         NoteVal nval;
@@ -2874,45 +2887,60 @@ void Score::padToggle(Pad n)
       std::vector<ChordRest*> crs;
 
       if (selection().isSingle()) {
-            // do not allow to add a dot on a full measure rest
             Element* e = selection().element();
-            if (e && e->isRest()) {
-                  Rest* r = toRest(e);
+            ChordRest* cr = InputState::chordRest(e);
+
+            // do not allow to add a dot on a full measure rest
+            if (cr && cr->isRest()) {
+                  Rest* r = toRest(cr);
                   if (r->isFullMeasureRest())
                         _is.setDots(0);
                   }
 
             // on measure rest, select the first actual rest
-            ChordRest* cr = selection().cr();
             if (cr && cr->isRest() && cr->measure()->isMMRest()) {
                   Measure* m = cr->measure()->mmRestFirst();
                   if (m)
                         cr = m->findChordRest(m->tick(), 0);
                   }
 
-            if (cr)
+            if (cr) {
                   crs.push_back(cr);
+                  }
+            else {
+                  ed.view->startNoteEntryMode();
+                  deselect(e);
+                  }
+            }
+      else if (selection().isNone() && n != Pad::REST) {
+            TDuration td = _is.duration();
+            ed.view->startNoteEntryMode();
+            _is.setDuration(td);
+            _is.setAccidentalType(AccidentalType::NONE);
             }
       else {
             const auto elements = selection().uniqueElements();
             bool canAdjustLength = true;
             for (Element* e : elements) {
-                  if (!e)
+                  ChordRest* cr = InputState::chordRest(e);
+                  if (!cr)
                         continue;
-                  if (e->isNote())
-                        e = e->parent();
-                  if (!e->isChordRest() || e->isRepeatMeasure() || (e->isRest() && toRest(e)->measure() && toRest(e)->measure()->isMMRest())) {
+                  if (cr->isRepeatMeasure() || (cr->isRest() && toRest(cr)->measure() && toRest(cr)->measure()->isMMRest())) {
                         canAdjustLength = false;
                         break;
                         }
-                  crs.push_back(toChordRest(e));
+                  crs.push_back(cr);
                   }
 
             if (canAdjustLength) {
                   // Change length from last to first chord/rest
                   std::sort(crs.begin(), crs.end(), [](const ChordRest* cr1, const ChordRest* cr2) {
-                        return cr2->track() < cr1->track() || cr2->isBefore(cr1);
+                        if (cr2->track() == cr1->track())
+                              return cr2->isBefore(cr1);
+                        return cr2->track() < cr1->track();
                         });
+                  // Remove duplicates from the list
+                  crs.erase(std::unique(crs.begin(), crs.end()), crs.end());
                   }
             else
                   crs.clear();
@@ -3761,7 +3789,7 @@ void Score::removeUnmanagedSpanner(Spanner* s)
 //   setPos
 //---------------------------------------------------------
 
-void Score::setPos(POS pos, Fraction tick)
+void MasterScore::setPos(POS pos, Fraction tick)
       {
       if (tick < Fraction(0,1))
             tick = Fraction(0,1);
@@ -3771,7 +3799,8 @@ void Score::setPos(POS pos, Fraction tick)
       // even though tick position might not have changed, layout might have
       // so we should update cursor here
       // however, we must be careful not to call setPos() again while handling posChanged, or recursion results
-      emit posChanged(pos, unsigned(tick.ticks()));
+      for (Score* s : scoreList())
+            emit s->posChanged(pos, unsigned(tick.ticks()));
       }
 
 //---------------------------------------------------------
@@ -3999,11 +4028,12 @@ QString Score::extractLyrics()
       for (int track = 0; track < ntracks(); track += VOICES) {
             bool found = false;
             size_t maxLyrics = 1;
+            const RepeatList& rlist = repeatList();
             for (Measure* m = firstMeasure(); m; m = m->nextMeasure()) {
                   m->setPlaybackCount(0);
                   }
             // follow the repeat segments
-            for (const RepeatSegment* rs : repeatList()) {
+            for (const RepeatSegment* rs : rlist) {
                   Fraction startTick  = Fraction::fromTicks(rs->tick);
                   Fraction endTick    = startTick + Fraction::fromTicks(rs->len());
                   for (Measure* m = tick2measure(startTick); m; m = m->nextMeasure()) {
@@ -4455,6 +4485,10 @@ MasterScore::MasterScore()
       _revisions   = new Revisions;
       setMasterScore(this);
 
+      _pos[int(POS::CURRENT)] = Fraction(0,1);
+      _pos[int(POS::LEFT)]    = Fraction(0,1);
+      _pos[int(POS::RIGHT)]   = Fraction(0,1);
+
 #if defined(Q_OS_WIN)
       metaTags().insert("platform", "Microsoft Windows");
 #elif defined(Q_OS_MAC)
@@ -4606,10 +4640,52 @@ void MasterScore::setUpdateAll()
 //   setLayoutAll
 //---------------------------------------------------------
 
-void MasterScore::setLayoutAll()
+void MasterScore::setLayoutAll(int staff, const Element* e)
       {
       _cmdState.setTick(Fraction(0,1));
       _cmdState.setTick(measures()->last() ? measures()->last()->endTick() : Fraction(0,1));
+
+      if (e && e->score() == this) {
+            // TODO: map staff number properly
+            const int startStaff = staff == -1 ? 0 : staff;
+            const int endStaff = staff == -1 ? (nstaves() - 1) : staff;
+            _cmdState.setStaff(startStaff);
+            _cmdState.setStaff(endStaff);
+
+            _cmdState.setElement(e);
+            }
+      }
+
+//---------------------------------------------------------
+//   setLayout
+//---------------------------------------------------------
+
+void MasterScore::setLayout(const Fraction& t, int staff, const Element* e)
+      {
+      if (t >= Fraction(0,1))
+            _cmdState.setTick(t);
+
+      if (e && e->score() == this) {
+            // TODO: map staff number properly
+            _cmdState.setStaff(staff);
+            _cmdState.setElement(e);
+            }
+      }
+
+void MasterScore::setLayout(const Fraction& tick1, const Fraction& tick2, int staff1, int staff2, const Element* e)
+      {
+      if (tick1 >= Fraction(0,1))
+            _cmdState.setTick(tick1);
+      if (tick2 >= Fraction(0,1))
+            _cmdState.setTick(tick2);
+
+      if (e && e->score() == this) {
+            // TODO: map staff number properly
+            _cmdState.setStaff(staff1);
+            _cmdState.setStaff(staff2);
+
+            _cmdState.setElement(e);
+            }
       }
 
 //---------------------------------------------------------
@@ -4641,16 +4717,6 @@ void MasterScore::setPlaybackScore(Score* score)
                         }
                   }
             }
-      }
-
-//---------------------------------------------------------
-//   setLayout
-//---------------------------------------------------------
-
-void MasterScore::setLayout(const Fraction& t)
-      {
-      if (t >= Fraction(0,1))
-            _cmdState.setTick(t);
       }
 
 //---------------------------------------------------------

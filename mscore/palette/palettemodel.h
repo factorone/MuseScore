@@ -24,6 +24,8 @@
 
 namespace Ms {
 
+class Selection;
+
 //---------------------------------------------------------
 //   PaletteCellFilter
 ///   Interface for filtering elements in a palette
@@ -89,16 +91,21 @@ class PaletteTreeModel : public QAbstractItemModel {
             PaletteCellRole = Qt::UserRole,
             VisibleRole,
             CustomRole,
+            EditableRole,
             MimeDataRole,
             GridSizeRole,
             DrawGridRole,
-            PaletteTypeRole
+            PaletteExpandedRole,
+            PaletteTypeRole,
+            PaletteContentTypeRole,
+            CellActiveRole
             };
       Q_ENUM(PaletteTreeModelRoles);
 
    private:
       std::unique_ptr<PaletteTree> _paletteTree;
       bool _treeChanged = false;
+      bool _treeChangedSignalBlocked = false;
 
       std::vector<std::unique_ptr<PalettePanel>>& palettes() { return _paletteTree->palettes; }
       const std::vector<std::unique_ptr<PalettePanel>>& palettes() const { return _paletteTree->palettes; }
@@ -107,15 +114,22 @@ class PaletteTreeModel : public QAbstractItemModel {
       const PalettePanel* iptrToPalettePanel(void* iptr, int* idx = nullptr) const { return const_cast<PaletteTreeModel*>(this)->iptrToPalettePanel(iptr, idx); }
 
    private slots:
-      void setTreeChanged() { _treeChanged = true; }
-
+      void onDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight, const QVector<int>& roles);
+      
    public slots:
       void itemDataChanged(const QModelIndex& idx);
+      void setTreeChanged();
+      void setTreeUnchanged() { _treeChanged = false; }
+
+   signals:
+      void treeChanged();
 
    public:
       explicit PaletteTreeModel(std::unique_ptr<PaletteTree> tree, QObject* parent = nullptr);
       explicit PaletteTreeModel(PaletteTree* tree, QObject* parent = nullptr)
          : PaletteTreeModel(std::unique_ptr<PaletteTree>(tree), parent) {}
+
+      bool blockTreeChanged(bool block);
 
       void setPaletteTree(std::unique_ptr<PaletteTree> tree);
       const PaletteTree* paletteTree() const { return _paletteTree.get(); }
@@ -152,8 +166,12 @@ class PaletteTreeModel : public QAbstractItemModel {
 
       const PalettePanel* findPalettePanel(const QModelIndex&) const;
       PalettePanel* findPalettePanel(const QModelIndex& index);
-      const PaletteCell* findCell(const QModelIndex&) const;
-      PaletteCell* findCell(const QModelIndex& index);
+      PaletteCellConstPtr findCell(const QModelIndex&) const;
+      PaletteCellPtr findCell(const QModelIndex& index);
+      bool insertPalettePanel(std::unique_ptr<PalettePanel> pp, int row, const QModelIndex& parent = QModelIndex());
+
+      void updateCellsState(const Selection&, bool deactivateAll);
+      void retranslate();
       };
 
 //---------------------------------------------------------
@@ -176,16 +194,13 @@ class FilterPaletteTreeModel : public QSortFilterProxyModel {
       };
 
 //---------------------------------------------------------
-//   RecursiveFilterProxyModel
-///   Filters model recursively. A similar effect can be
-///   achieved since Qt 5.10 by enabling
-///   QSortFilterProxyModel::recursiveFilteringEnabled
+//   PaletteCellFilterProxyModel
 //---------------------------------------------------------
 
-class RecursiveFilterProxyModel : public QSortFilterProxyModel {
+class PaletteCellFilterProxyModel : public QSortFilterProxyModel {
       Q_OBJECT
    public:
-      RecursiveFilterProxyModel(QObject* parent = nullptr) : QSortFilterProxyModel(parent) {}
+      PaletteCellFilterProxyModel(QObject* parent = nullptr) : QSortFilterProxyModel(parent) {}
 
       bool filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const override;
       };

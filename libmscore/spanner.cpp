@@ -77,6 +77,11 @@ qreal SpannerSegment::mag() const
       return staff() ? staff()->mag(spanner()->tick()) : 1.0;
       }
 
+Fraction SpannerSegment::tick() const
+      {
+      return _spanner ? _spanner->tick() : Fraction(0, 1);
+      }
+
 //---------------------------------------------------------
 //   setSystem
 //---------------------------------------------------------
@@ -142,7 +147,7 @@ bool SpannerSegment::setProperty(Pid pid, const QVariant& v)
       switch (pid) {
             case Pid::OFFSET2:
                   _offset2 = v.toPointF();
-                  score()->setLayoutAll();
+                  triggerLayoutAll();
                   break;
             default:
                   return Element::setProperty(pid, v);
@@ -591,6 +596,13 @@ void Spanner::computeStartElement()
 
 void Spanner::computeEndElement()
       {
+      if (score()->isPalette()) {
+            // return immediately to prevent lots of
+            // "no element found" messages from appearing
+            _endElement = nullptr;
+            return;
+            }
+
       switch (_anchor) {
             case Anchor::SEGMENT: {
                   if (track2() == -1)
@@ -792,7 +804,7 @@ ChordRest* Spanner::endCR()
       Q_ASSERT(_anchor == Anchor::SEGMENT || _anchor == Anchor::CHORD);
       if ((!_endElement || _endElement->score() != score())) {
             Segment* s  = score()->tick2segmentMM(tick2(), false, SegmentType::ChordRest);
-            const int tr2 = (track2() == -1) ? track() : track2();
+            const int tr2 = effectiveTrack2();
             _endElement = s ? toChordRest(s->element(tr2)) : nullptr;
             }
       return toChordRest(_endElement);
@@ -976,7 +988,7 @@ Element* Spanner::nextSegmentElement()
       Segment* s = startSegment();
       if (s)
             return s->firstElement(staffIdx());
-      return score()->firstElement();
+      return score()->lastElement();
       }
 
 //---------------------------------------------------------
@@ -988,7 +1000,7 @@ Element* Spanner::prevSegmentElement()
       Segment* s = endSegment();
       if (s)
             return s->lastElement(staffIdx());
-      return score()->lastElement();
+      return score()->firstElement();
       }
 
 //---------------------------------------------------------
@@ -1028,8 +1040,19 @@ void Spanner::setTicks(const Fraction& f)
 
 void Spanner::triggerLayout() const
       {
-      score()->setLayout(_tick);
-      score()->setLayout(_tick + _ticks);
+      // Spanners do not have parent even when added to a score, so can't check parent here
+      const int tr2 = effectiveTrack2();
+      score()->setLayout(_tick, _tick + _ticks, staffIdx(), track2staff(tr2), this);
+      }
+
+void Spanner::triggerLayoutAll() const
+      {
+      // Spanners do not have parent even when added to a score, so can't check parent here
+      score()->setLayoutAll(staffIdx(), this);
+
+      const int tr2 = track2();
+      if (tr2 != -1 && tr2 != track())
+            score()->setLayoutAll(track2staff(tr2), this);
       }
 
 //---------------------------------------------------------

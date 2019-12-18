@@ -33,7 +33,8 @@ void QmlIconView::paint(QPainter* p)
             }
 
       const QIcon::Mode mode = _selected ? QIcon::Selected : QIcon::Active;
-      _icon.paint(p, QRect(0, 0, width(), height()), Qt::AlignCenter, mode);
+      const QIcon::State state = _active ? QIcon::On : QIcon::Off;
+      _icon.paint(p, QRect(0, 0, width(), height()), Qt::AlignCenter, mode, state);
       }
 
 //---------------------------------------------------------
@@ -43,7 +44,7 @@ void QmlIconView::paint(QPainter* p)
 void QmlIconView::setIcon(QVariant v)
       {
       if (v.canConvert<QIcon>())
-            _icon = std::move(v.value<QIcon>());
+            _icon = v.value<QIcon>();
       else if (v.canConvert<QColor>()) {
             _color = v.value<QColor>();
             _icon = QIcon();

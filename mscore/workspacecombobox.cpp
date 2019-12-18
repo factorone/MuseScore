@@ -29,8 +29,8 @@ namespace Ms {
 //   WorkspaceComboBox
 //---------------------------------------------------------
 
-WorkspaceComboBox::WorkspaceComboBox(MuseScore* mscore, QWidget* parent)
-   : QComboBox(parent), _mscore(mscore)
+WorkspaceComboBox::WorkspaceComboBox(MuseScore* mScore, QWidget* parent)
+   : QComboBox(parent), _mscore(mScore)
       {
       retranslate();
       connect(_mscore, &MuseScore::workspacesChanged, this, &WorkspaceComboBox::updateWorkspaces);
@@ -76,7 +76,7 @@ void WorkspaceComboBox::updateWorkspaces()
             return;
 
       clear();
-      const QList<Workspace*> pl = Workspace::workspaces();
+      const QList<Workspace*> pl = WorkspacesManager::visibleWorkspaces();
       int idx = 0;
       int curIdx = -1;
       for (Workspace* p : pl) {
@@ -103,8 +103,8 @@ void WorkspaceComboBox::workspaceSelected(int idx)
       if (idx < 0)
             return;
 
-      Workspace* w = Workspace::workspaces().at(idx);
-      if (w != Workspace::currentWorkspace) {
+      Workspace* w = WorkspacesManager::visibleWorkspaces().at(idx);
+      if (w != WorkspacesManager::currentWorkspace()) {
             blockUpdateWorkspaces = true;
             _mscore->changeWorkspace(w);
             blockUpdateWorkspaces = false;

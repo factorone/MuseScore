@@ -111,7 +111,7 @@ void ScoreView::startEdit(Element* element, Grip startGrip)
       editData.element = element;
       if (forceStartEdit) // call startEdit() forcibly to reinitialize edit mode.
             startEdit();
-      else
+      else if (state != ViewState::DRAG_EDIT)
             changeState(ViewState::EDIT);
 
       if (startGrip != Grip::NO_GRIP)
@@ -227,10 +227,10 @@ void ScoreView::endDragEdit()
       _score->addRefresh(editData.element->canvasBoundingRect());
 
       editData.element->endEditDrag(editData);
+      score()->endCmd();            // calls update()
       updateGrips();
       _score->addRefresh(editData.element->canvasBoundingRect());
       setDropTarget(0);
-      score()->endCmd();            // calls update()
       _score->rebuildBspTree();
       }
 }

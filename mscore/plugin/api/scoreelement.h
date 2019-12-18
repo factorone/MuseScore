@@ -55,11 +55,13 @@ class ScoreElement : public QObject {
 
       Ownership _ownership;
 
-      /// \cond MS_INTERNAL
    protected:
+      /// \cond MS_INTERNAL
       Ms::ScoreElement* const e;
+      /// \endcond
 
    public:
+      /// \cond MS_INTERNAL
       ScoreElement(Ms::ScoreElement* _e = nullptr, Ownership own = Ownership::PLUGIN)
          : QObject(), _ownership(own), e(_e) {}
       ScoreElement(const ScoreElement&) = delete;
@@ -80,6 +82,8 @@ class ScoreElement : public QObject {
       /// \endcond
 
       Q_INVOKABLE QString userName() const;
+      /// Checks whether two variables represent the same object. \since MuseScore 3.3
+      Q_INVOKABLE bool is(Ms::PluginAPI::ScoreElement* other) { return other && element() == other->element(); }
       };
 
 //---------------------------------------------------------
