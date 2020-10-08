@@ -7,6 +7,7 @@
 build.release
 build.debug
 build.qtc
+build.artifacts
 win32build
 win32install
 win64build
@@ -32,6 +33,7 @@ CMakeLists.txt.user.*
 *.qmlc
 *.jsc
 vtest/html
+vtest/compare
 thirdparty/mupdf-qt
 vtest/LOG
 vtest/META-INF

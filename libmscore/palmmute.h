@@ -16,50 +16,56 @@
 #include "textlinebase.h"
 
 namespace Ms {
-
 class PalmMute;
 
 //---------------------------------------------------------
 //   @@ PalmMuteSegment
 //---------------------------------------------------------
 
-class PalmMuteSegment final : public TextLineBaseSegment {
+class PalmMuteSegment final : public TextLineBaseSegment
+{
+    Sid getPropertyStyle(Pid) const override;
 
-      virtual Sid getPropertyStyle(Pid) const override;
+public:
+    PalmMuteSegment(Spanner* sp, Score* s)
+        : TextLineBaseSegment(sp, s, ElementFlag::MOVABLE | ElementFlag::ON_STAFF)
+    {
+    }
 
-   public:
-      PalmMuteSegment(Spanner* sp, Score* s) : TextLineBaseSegment(sp, s, ElementFlag::MOVABLE | ElementFlag::ON_STAFF)  { }
-      virtual ElementType type() const override       { return ElementType::PALM_MUTE_SEGMENT; }
-      virtual PalmMuteSegment* clone() const override { return new PalmMuteSegment(*this);    }
-      PalmMute* palmMute() const                      { return (PalmMute*)spanner();          }
-      virtual void layout() override;
+    ElementType type() const override { return ElementType::PALM_MUTE_SEGMENT; }
+    PalmMuteSegment* clone() const override { return new PalmMuteSegment(*this); }
 
-      friend class PalmMute;
-      };
+    PalmMute* palmMute() const { return (PalmMute*)spanner(); }
+
+    void layout() override;
+
+    friend class PalmMute;
+};
 
 //---------------------------------------------------------
 //   @@ PalmMute
 //---------------------------------------------------------
 
-class PalmMute final : public TextLineBase {
+class PalmMute final : public TextLineBase
+{
+    Sid getPropertyStyle(Pid) const override;
 
-      virtual Sid getPropertyStyle(Pid) const override;
+protected:
+    QPointF linePos(Grip, System**) const override;
 
-   protected:
-      QPointF linePos(Grip, System**) const override;
+public:
+    PalmMute(Score* s);
 
-   public:
-      PalmMute(Score* s);
-      virtual PalmMute* clone() const override  { return new PalmMute(*this);   }
-      virtual ElementType type() const override { return ElementType::PALM_MUTE; }
-      virtual void read(XmlReader&) override;
+    PalmMute* clone() const override { return new PalmMute(*this); }
+    ElementType type() const override { return ElementType::PALM_MUTE; }
+
+    void read(XmlReader&) override;
 //      virtual void write(XmlWriter& xml) const override;
-      LineSegment* createLineSegment();
-      virtual QVariant propertyDefault(Pid propertyId) const override;
 
-      friend class PalmMuteLine;
-      };
+    LineSegment* createLineSegment() override;
+    QVariant propertyDefault(Pid propertyId) const override;
 
+    friend class PalmMuteLine;
+};
 }     // namespace Ms
 #endif
-

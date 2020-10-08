@@ -19,22 +19,20 @@
 #include "stafftextbase.h"
 
 namespace Ms {
-
 //---------------------------------------------------------
 //   StaffText
 //---------------------------------------------------------
 
-class StaffText final : public StaffTextBase  {
-      virtual Sid getPropertyStyle(Pid) const override;
-      virtual QVariant propertyDefault(Pid id) const override;
+class StaffText final : public StaffTextBase
+{
+    QVariant propertyDefault(Pid id) const override;
 
-   public:
-      StaffText(Score* s = 0, Tid = Tid::STAFF);
-      virtual StaffText* clone() const override       { return new StaffText(*this); }
-      virtual ElementType type() const override       { return ElementType::STAFF_TEXT; }
-      virtual void layout() override;
-      };
+public:
+    StaffText(Score* s = 0, Tid = Tid::STAFF);
 
-
+    StaffText* clone() const override { return new StaffText(*this); }
+    ElementType type() const override { return ElementType::STAFF_TEXT; }
+    void layout() override;
+};
 }     // namespace Ms
 #endif

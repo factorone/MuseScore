@@ -16,50 +16,52 @@
 #include "textlinebase.h"
 
 namespace Ms {
-
 class Pedal;
 
 //---------------------------------------------------------
 //   @@ PedalSegment
 //---------------------------------------------------------
 
-class PedalSegment final : public TextLineBaseSegment {
+class PedalSegment final : public TextLineBaseSegment
+{
+    Sid getPropertyStyle(Pid) const override;
 
-      virtual Sid getPropertyStyle(Pid) const override;
+public:
+    PedalSegment(Spanner* sp, Score* s)
+        : TextLineBaseSegment(sp, s, ElementFlag::MOVABLE | ElementFlag::ON_STAFF) {}
 
-   public:
-      PedalSegment(Spanner* sp, Score* s) : TextLineBaseSegment(sp, s, ElementFlag::MOVABLE | ElementFlag::ON_STAFF) {}
-      virtual ElementType type() const override       { return ElementType::PEDAL_SEGMENT; }
-      virtual PedalSegment* clone() const override    { return new PedalSegment(*this);    }
-      Pedal* pedal() const                            { return toPedal(spanner());          }
-      virtual void layout() override;
+    ElementType type() const override { return ElementType::PEDAL_SEGMENT; }
+    PedalSegment* clone() const override { return new PedalSegment(*this); }
+    Pedal* pedal() const { return toPedal(spanner()); }
+    void layout() override;
 
-      friend class Pedal;
-      };
+    friend class Pedal;
+};
 
 //---------------------------------------------------------
 //   @@ Pedal
 //---------------------------------------------------------
 
-class Pedal final : public TextLineBase {
+class Pedal final : public TextLineBase
+{
+    Sid getPropertyStyle(Pid) const override;
 
-      virtual Sid getPropertyStyle(Pid) const override;
+protected:
+    QPointF linePos(Grip, System**) const override;
 
-   protected:
-      QPointF linePos(Grip, System**) const override;
+public:
+    Pedal(Score* s);
 
-   public:
-      Pedal(Score* s);
-      virtual Pedal* clone() const override     { return new Pedal(*this);   }
-      virtual ElementType type() const override { return ElementType::PEDAL; }
-      virtual void read(XmlReader&) override;
-      virtual void write(XmlWriter& xml) const override;
-      LineSegment* createLineSegment();
-      virtual QVariant propertyDefault(Pid propertyId) const override;
+    Pedal* clone() const override { return new Pedal(*this); }
+    ElementType type() const override { return ElementType::PEDAL; }
 
-      friend class PedalLine;
-      };
+    void read(XmlReader&) override;
+    void write(XmlWriter& xml) const override;
 
+    LineSegment* createLineSegment() override;
+    QVariant propertyDefault(Pid propertyId) const override;
+
+    friend class PedalLine;
+};
 }     // namespace Ms
 #endif
-

@@ -17,6 +17,9 @@ for /r %1 %%a in (*.cpp) do echo     %%a \
 echo.
 echo.
 
-echo RESOURCES = ./mscore/qml.qrc
+echo RESOURCES = \
+echo     ./mu4/scenes/palette/palette.qrc \
+echo     ./telemetry/telemetry_resources.qrc \
+echo.
 
 cd /d %OLD_DIR%

@@ -18,7 +18,6 @@
 #include "property.h"
 
 namespace Ms {
-
 class ChordRest;
 class MuseScoreView;
 class Chord;
@@ -34,132 +33,157 @@ struct BeamFragment;
 //   @@ Beam
 //---------------------------------------------------------
 
-class Beam final : public Element {
-      Q_GADGET
-      QVector<ChordRest*> _elements;        // must be sorted by tick
-      QVector<QLineF*> beamSegments;
-      Direction _direction;
+class Beam final : public Element
+{
+    Q_GADGET
+    QVector<ChordRest*> _elements;          // must be sorted by tick
+    QVector<QLineF*> beamSegments;
+    Direction _direction;
 
-      bool _up;
-      bool _distribute;                   // equal spacing of elements
-      bool _noSlope;
+    bool _up;
+    bool _distribute;                     // equal spacing of elements
+    bool _noSlope;
 
-      bool _userModified[2];              // 0: auto/down  1: up
-      bool _isGrace;
-      bool _cross;
+    bool _userModified[2];                // 0: auto/down  1: up
+    bool _isGrace;
+    bool _cross;
 
-      qreal _grow1;                       // define "feather" beams
-      qreal _grow2;
-      qreal _beamDist;
+    qreal _grow1;                         // define "feather" beams
+    qreal _grow2;
+    qreal _beamDist;
 
-      QVector<BeamFragment*> fragments;     // beam splits across systems
+    QVector<BeamFragment*> fragments;       // beam splits across systems
 
-      mutable int _id;          // used in read()/write()
+    mutable int _id;            // used in read()/write()
 
-      int minMove;              // set in layout1()
-      int maxMove;
-      TDuration maxDuration;
-      qreal slope { 0.0 };
+    int minMove;                // set in layout1()
+    int maxMove;
+    TDuration maxDuration;
+    qreal slope { 0.0 };
 
-      void layout2(std::vector<ChordRest*>, SpannerSegmentType, int frag);
-      bool twoBeamedNotes();
-      void computeStemLen(const std::vector<ChordRest*>& crl, qreal& py1, int beamLevels);
-      bool slopeZero(const std::vector<ChordRest*>& crl);
-      bool hasNoSlope();
-      void addChordRest(ChordRest* a);
-      void removeChordRest(ChordRest* a);
+    void layout2(std::vector<ChordRest*>, SpannerSegmentType, int frag);
+    bool twoBeamedNotes();
+    void computeStemLen(const std::vector<ChordRest*>& crl, qreal& py1, int beamLevels);
+    bool slopeZero(const std::vector<ChordRest*>& crl);
+    bool hasNoSlope();
+    void addChordRest(ChordRest* a);
+    void removeChordRest(ChordRest* a);
 
-   public:
-      enum class Mode : signed char {
-            ///.\{
-            AUTO, BEGIN, MID, END, NONE, BEGIN32, BEGIN64, INVALID = -1
-            ///\}
-            };
-      Q_ENUM(Mode);
+public:
+    enum class Mode : signed char {
+        ///.\{
+        AUTO, BEGIN, MID, END, NONE, BEGIN32, BEGIN64, INVALID = -1
+                                                                 ///\}
+    };
+    Q_ENUM(Mode);
 
-      Beam(Score* = 0);
-      Beam(const Beam&);
-      ~Beam();
-      virtual Beam* clone() const override         { return new Beam(*this); }
-      virtual ElementType type() const override    { return ElementType::BEAM; }
-      virtual QPointF pagePos() const override;    ///< position in page coordinates
-      virtual QPointF canvasPos() const override;  ///< position in page coordinates
+    Beam(Score* = 0);
+    Beam(const Beam&);
+    ~Beam();
 
-      virtual bool isEditable() const override { return true; }
-      virtual void startEdit(EditData&) override;
-      virtual void endEdit(EditData&) override;
-      virtual void editDrag(EditData&) override;
-      virtual void updateGrips(EditData&) const override;
+    // Score Tree functions
+    ScoreElement* treeParent() const override;
+    ScoreElement* treeChild(int idx) const override;
+    int treeChildCount() const override;
 
-      virtual Fraction tick() const override;
-      virtual Fraction rtick() const override;
+    void scanElements(void* data, void (* func)(void*, Element*), bool all=true) override;
 
-      virtual void write(XmlWriter& xml) const override;
-      virtual void read(XmlReader&) override;
-      virtual void spatiumChanged(qreal /*oldValue*/, qreal /*newValue*/) override;
+    Beam* clone() const override { return new Beam(*this); }
+    ElementType type() const override { return ElementType::BEAM; }
+    QPointF pagePos() const override;      ///< position in page coordinates
+    QPointF canvasPos() const override;    ///< position in page coordinates
 
-      virtual void reset() override;
+    bool isEditable() const override { return true; }
+    void startEdit(EditData&) override;
+    void endEdit(EditData&) override;
+    void editDrag(EditData&) override;
 
-      System* system() const { return toSystem(parent()); }
+    Fraction tick() const override;
+    Fraction rtick() const override;
+    Fraction ticks() const;
 
-      void layout1();
-      void layoutGraceNotes();
-      void layout();
+    void write(XmlWriter& xml) const override;
+    void read(XmlReader&) override;
+    void spatiumChanged(qreal /*oldValue*/, qreal /*newValue*/) override;
 
-      const QVector<ChordRest*>& elements() { return _elements;  }
-      void clear()                        { _elements.clear(); }
-      bool empty() const                { return _elements.empty(); }
-      bool contains(const ChordRest* cr) const { return std::find(_elements.begin(), _elements.end(), cr) != _elements.end(); }
+    void reset() override;
 
-      virtual void add(Element*) override;
-      virtual void remove(Element*) override;
+    System* system() const { return toSystem(parent()); }
 
-      virtual void move(const QPointF&) override;
-      virtual void draw(QPainter*) const override;
+    void layout1();
+    void layoutGraceNotes();
+    void layout();
 
-      bool up() const                     { return _up; }
-      void setUp(bool v)                  { _up = v;    }
-      void setId(int i) const             { _id = i;    }
-      int id() const                      { return _id; }
-      bool noSlope() const                { return _noSlope; }
-      void setNoSlope(bool val)           { _noSlope = val; }
+    const QVector<ChordRest*>& elements() const { return _elements; }
+    void clear() { _elements.clear(); }
+    bool empty() const { return _elements.empty(); }
+    bool contains(const ChordRest* cr) const
+    {
+        return std::find(_elements.begin(), _elements.end(), cr) != _elements.end();
+    }
 
-      void setBeamDirection(Direction d);
-      Direction beamDirection() const     { return _direction; }
+    void add(Element*) override;
+    void remove(Element*) override;
 
-      virtual bool acceptDrop(EditData&) const override;
-      virtual Element* drop(EditData&) override;
+    void move(const QPointF&) override;
+    void draw(QPainter*) const override;
 
-      qreal growLeft() const              { return _grow1; }
-      qreal growRight() const             { return _grow2; }
-      void setGrowLeft(qreal val)         { _grow1 = val;  }
-      void setGrowRight(qreal val)        { _grow2 = val;  }
+    bool up() const { return _up; }
+    void setUp(bool v) { _up = v; }
+    void setId(int i) const { _id = i; }
+    int id() const { return _id; }
+    bool isNoSlope() const;
+    void alignBeamPosition();
 
-      bool distribute() const             { return _distribute; }
-      void setDistribute(bool val)        { _distribute = val;  }
+    void setBeamDirection(Direction d);
+    Direction beamDirection() const { return _direction; }
 
-      bool userModified() const;
-      void setUserModified(bool val);
+    //!Note Unfortunately we have no FEATHERED_BEAM_MODE for now int Beam::Mode enum, so we'll handle this localy
+    void setAsFeathered(const bool slower);
+    bool acceptDrop(EditData&) const override;
+    Element* drop(EditData&) override;
 
-      QPointF beamPos() const;
-      void setBeamPos(const QPointF& bp);
+    qreal growLeft() const { return _grow1; }
+    qreal growRight() const { return _grow2; }
+    void setGrowLeft(qreal val) { _grow1 = val; }
+    void setGrowRight(qreal val) { _grow2 = val; }
 
-      qreal beamDist() const              { return _beamDist; }
+    bool distribute() const { return _distribute; }
+    void setDistribute(bool val) { _distribute = val; }
 
-      virtual QVariant getProperty(Pid propertyId) const override;
-      virtual bool setProperty(Pid propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(Pid id) const override;
+    bool userModified() const;
+    void setUserModified(bool val);
 
-      bool isGrace() const { return _isGrace; }  // for debugger
-      bool cross() const   { return _cross; }
+    QPointF beamPos() const;
+    void setBeamPos(const QPointF& bp);
 
-      void addSkyline(Skyline&);
+    qreal beamDist() const { return _beamDist; }
 
-      virtual void triggerLayout() const override;
+    QVariant getProperty(Pid propertyId) const override;
+    bool setProperty(Pid propertyId, const QVariant&) override;
+    QVariant propertyDefault(Pid id) const override;
 
-      static IconType iconType(Mode);
-      };
+    bool isGrace() const { return _isGrace; }    // for debugger
+    bool cross() const { return _cross; }
 
+    void addSkyline(Skyline&);
 
+    void triggerLayout() const override;
+
+    EditBehavior normalModeEditBehavior() const override { return EditBehavior::Edit; }
+    int gripsCount() const override { return 3; }
+    Grip initialEditModeGrip() const override { return Grip::END; }
+    Grip defaultGrip() const override { return Grip::MIDDLE; }
+    std::vector<QPointF> gripsPositions(const EditData&) const override;
+
+    static IconType iconType(Mode);
+
+    QRectF drag(EditData&) override;
+    bool isMovable() const override;
+    void startDrag(EditData&) override;
+
+private:
+    void initBeamEditData(EditData& ed);
+};
 }     // namespace Ms
 #endif

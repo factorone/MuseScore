@@ -16,53 +16,63 @@
 #include "element.h"
 
 namespace Ms {
-
 //---------------------------------------------------------
 //   SpacerType
 //---------------------------------------------------------
 
 enum class SpacerType : char {
-      UP, DOWN, FIXED
-      };
+    UP, DOWN, FIXED
+};
 
 //-------------------------------------------------------------------
 //   @@ Spacer
 ///    Vertical spacer element to adjust the distance of staves.
 //-------------------------------------------------------------------
 
-class Spacer final : public Element {
-      SpacerType _spacerType;
-      qreal _gap;
+class Spacer final : public Element
+{
+    SpacerType _spacerType;
+    qreal _gap;
 
-      QPainterPath path;
+    QPainterPath path;
 
-      void layout0();
+    void layout0();
 
-   public:
-      Spacer(Score*);
-      Spacer(const Spacer&);
-      virtual Spacer* clone() const    { return new Spacer(*this); }
-      virtual ElementType type() const { return ElementType::SPACER; }
-      SpacerType spacerType() const    { return _spacerType; }
-      void setSpacerType(SpacerType t) { _spacerType = t; }
+public:
+    Spacer(Score*);
+    Spacer(const Spacer&);
 
-      virtual void write(XmlWriter&) const;
-      virtual void read(XmlReader&);
-      virtual void draw(QPainter*) const;
-      virtual bool isEditable() const { return true; }
-      virtual void startEdit(EditData&) override;
-      virtual void startEditDrag(EditData&) override;
-      virtual void editDrag(EditData&) override;
-      virtual void updateGrips(EditData&) const override;
-      virtual void spatiumChanged(qreal, qreal);
-      void setGap(qreal sp);
-      qreal gap() const     { return _gap; }
+    Spacer* clone() const override { return new Spacer(*this); }
+    ElementType type() const override { return ElementType::SPACER; }
+    Measure* measure() const { return toMeasure(parent()); }
 
-      QVariant getProperty(Pid propertyId) const;
-      bool setProperty(Pid propertyId, const QVariant&);
-      QVariant propertyDefault(Pid id) const;
-      };
+    SpacerType spacerType() const { return _spacerType; }
+    void setSpacerType(SpacerType t) { _spacerType = t; }
 
+    void write(XmlWriter&) const override;
+    void read(XmlReader&) override;
 
+    void draw(QPainter*) const override;
+
+    void scanElements(void* data, void (* func)(void*, Element*), bool all=true) override;
+
+    bool isEditable() const override { return true; }
+    void startEditDrag(EditData&) override;
+    void editDrag(EditData&) override;
+    void spatiumChanged(qreal, qreal) override;
+
+    void setGap(qreal sp);
+    qreal gap() const { return _gap; }
+
+    EditBehavior normalModeEditBehavior() const override { return EditBehavior::Edit; }
+    int gripsCount() const override { return 1; }
+    Grip initialEditModeGrip() const override { return Grip::START; }
+    Grip defaultGrip() const override { return Grip::START; }
+    std::vector<QPointF> gripsPositions(const EditData&) const override;
+
+    QVariant getProperty(Pid propertyId) const override;
+    bool setProperty(Pid propertyId, const QVariant&) override;
+    QVariant propertyDefault(Pid id) const override;
+};
 }     // namespace Ms
 #endif

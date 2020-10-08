@@ -16,7 +16,6 @@
 #include "textlinebase.h"
 
 namespace Ms {
-
 class Score;
 class XmlWriter;
 class Volta;
@@ -29,64 +28,72 @@ extern LineSegment* voltaDebug;
 //   @@ VoltaSegment
 //---------------------------------------------------------
 
-class VoltaSegment final : public TextLineBaseSegment {
-   public:
-      VoltaSegment(Spanner*, Score*);
-      virtual ElementType type() const override     { return ElementType::VOLTA_SEGMENT; }
-      virtual VoltaSegment* clone() const override  { return new VoltaSegment(*this); }
-      Volta* volta() const                          { return (Volta*)spanner(); }
-      virtual void layout() override;
+class VoltaSegment final : public TextLineBaseSegment
+{
+public:
+    VoltaSegment(Spanner*, Score*);
 
-      virtual Element* propertyDelegate(Pid) override;
-      };
+    ElementType type() const override { return ElementType::VOLTA_SEGMENT; }
+    VoltaSegment* clone() const override { return new VoltaSegment(*this); }
+
+    Volta* volta() const { return (Volta*)spanner(); }
+    void layout() override;
+
+    Element* propertyDelegate(Pid) override;
+};
 
 //---------------------------------------------------------
 //   @@ Volta
 //   @P voltaType  enum (Volta.CLOSE, Volta.OPEN)
 //---------------------------------------------------------
 
-class Volta final : public TextLineBase {
-      QList<int> _endings;
+class Volta final : public TextLineBase
+{
+    QList<int> _endings;
+    static constexpr Anchor VOLTA_ANCHOR = Anchor::MEASURE;
 
-   public:
-      enum class Type : char {
-            OPEN, CLOSED
-            };
+public:
+    enum class Type : char {
+        OPEN, CLOSED
+    };
 
-      Volta(Score* s);
-      virtual Volta* clone()       const override { return new Volta(*this); }
-      virtual ElementType type() const override   { return ElementType::VOLTA; }
-      virtual LineSegment* createLineSegment() override;
+    Volta(Score* s);
 
-      virtual void write(XmlWriter&) const override;
-      virtual void read(XmlReader& e) override;
-      virtual SpannerSegment* layoutSystem(System* system) override;
+    Volta* clone() const override { return new Volta(*this); }
+    ElementType type() const override { return ElementType::VOLTA; }
 
-      void setVelocity() const;
-      void setChannel() const;
-      void setTempo() const;
+    LineSegment* createLineSegment() override;
 
-      QList<int> endings() const           { return _endings; }
-      QList<int>& endings()                { return _endings; }
-      void setEndings(const QList<int>& l) { _endings = l;    }
-      void setText(const QString& s);
-      QString text() const;
+    void write(XmlWriter&) const override;
+    void read(XmlReader& e) override;
 
-      bool hasEnding(int repeat) const;
-      int lastEnding() const;
-      void setVoltaType(Volta::Type);     // deprecated
-      Type voltaType() const;             // deprecated
+    bool readProperties(XmlReader&) override;
+    SpannerSegment* layoutSystem(System* system) override;
 
-      virtual QVariant getProperty(Pid propertyId) const override;
-      virtual bool setProperty(Pid propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(Pid) const override;
+    void setVelocity() const;
+    void setChannel() const;
+    void setTempo() const;
 
-      virtual QString accessibleInfo() const override;
-      };
+    QList<int> endings() const { return _endings; }
+    QList<int>& endings() { return _endings; }
+    void setEndings(const QList<int>& l);
+    void setText(const QString& s);
+    QString text() const;
 
+    bool hasEnding(int repeat) const;
+    int firstEnding() const;
+    int lastEnding() const;
+    void setVoltaType(Volta::Type);       // deprecated
+    Type voltaType() const;               // deprecated
+
+    QVariant getProperty(Pid propertyId) const override;
+    bool setProperty(Pid propertyId, const QVariant&) override;
+    QVariant propertyDefault(Pid) const override;
+
+    QString accessibleInfo() const override;
+};
 }     // namespace Ms
 
 Q_DECLARE_METATYPE(Ms::Volta::Type);
 
 #endif
-

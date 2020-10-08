@@ -16,39 +16,49 @@
 #include "text.h"
 
 namespace Ms {
-
 enum class InstrumentNameType : char {
-      LONG, SHORT
-      };
+    LONG, SHORT
+};
+
+class System;
+class SysStaff;
 
 //---------------------------------------------------------
 //   InstrumentName
 //---------------------------------------------------------
 
-class InstrumentName final : public TextBase  {
-      InstrumentNameType _instrumentNameType;
-      int _layoutPos { 0 };
+class InstrumentName final : public TextBase
+{
+    InstrumentNameType _instrumentNameType;
+    int _layoutPos { 0 };
+    SysStaff* _sysStaff { nullptr };
 
-   public:
-      InstrumentName(Score*);
-      virtual InstrumentName* clone() const override { return new InstrumentName(*this); }
-      virtual ElementType type() const override    { return ElementType::INSTRUMENT_NAME; }
+public:
+    InstrumentName(Score*);
 
-      int layoutPos() const      { return _layoutPos; }
-      void setLayoutPos(int val) { _layoutPos = val;  }
+    InstrumentName* clone() const override { return new InstrumentName(*this); }
+    ElementType type() const override { return ElementType::INSTRUMENT_NAME; }
 
-      QString instrumentNameTypeName() const;
-      InstrumentNameType instrumentNameType() const { return _instrumentNameType; }
-      void setInstrumentNameType(InstrumentNameType v);
-      void setInstrumentNameType(const QString& s);
+    int layoutPos() const { return _layoutPos; }
+    void setLayoutPos(int val) { _layoutPos = val; }
 
-      virtual bool isEditable() const override { return false; }
-      virtual QVariant getProperty(Pid propertyId) const override;
-      virtual bool setProperty(Pid propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(Pid) const override;
-      };
+    QString instrumentNameTypeName() const;
+    InstrumentNameType instrumentNameType() const { return _instrumentNameType; }
+    void setInstrumentNameType(InstrumentNameType v);
+    void setInstrumentNameType(const QString& s);
 
+    System* system() const { return toSystem(parent()); }
 
+    SysStaff* sysStaff() const { return _sysStaff; }
+    void setSysStaff(SysStaff* s) { _sysStaff = s; }
+
+    void scanElements(void* data, void (* func)(void*, Element*), bool all=true) override;
+
+    Fraction playTick() const override;
+    bool isEditable() const override { return false; }
+    QVariant getProperty(Pid propertyId) const override;
+    bool setProperty(Pid propertyId, const QVariant&) override;
+    QVariant propertyDefault(Pid) const override;
+};
 }     // namespace Ms
 #endif
-

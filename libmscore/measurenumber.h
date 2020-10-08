@@ -16,25 +16,32 @@
 #include "textbase.h"
 
 namespace Ms {
-
 //---------------------------------------------------------
 //   MeasureNumber
 //---------------------------------------------------------
 
-class MeasureNumber final : public TextBase {
+class MeasureNumber final : public TextBase
+{
+    M_PROPERTY(HPlacement, hPlacement, setHPlacement)    // Horizontal Placement
 
-   public:
-      MeasureNumber(Score* s = 0);
+public:
+    MeasureNumber(Score* s = nullptr);
+    MeasureNumber(const MeasureNumber& other);
 
-      virtual ElementType type() const override       { return ElementType::MEASURE_NUMBER; }
-      virtual MeasureNumber* clone() const override   { return new MeasureNumber(*this); }
-      virtual QVariant propertyDefault(Pid id) const override;
+    virtual ElementType type() const override { return ElementType::MEASURE_NUMBER; }
+    virtual MeasureNumber* clone() const override { return new MeasureNumber(*this); }
 
-      virtual void layout() override;
-      Measure* measure() const { return toMeasure(parent()); }
-      };
+    virtual QVariant getProperty(Pid id) const override;
+    virtual bool setProperty(Pid id, const QVariant& val) override;
+    virtual QVariant propertyDefault(Pid id) const override;
 
+    virtual bool readProperties(XmlReader&) override;
+
+    virtual void layout() override;
+    Measure* measure() const { return toMeasure(parent()); }
+
+    virtual bool isEditable() const override { return false; }   // The measure numbers' text should not be editable
+};
 }     // namespace Ms
 
 #endif
-

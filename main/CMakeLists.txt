@@ -42,9 +42,17 @@ else (APPLE)
       set (ExecutableName mscore)
 endif (APPLE)
 
+include_directories(
+      ${PROJECT_SOURCE_DIR}/framework/global
+      ${PROJECT_BINARY_DIR}
+      ${QTSINGLEAPPLICATION_INCLUDE_DIRS}
+      )
+
 add_executable(${ExecutableName}
       ${resource_file}
       main.cpp
+      modulessetup.cpp
+      modulessetup.h
       )
 
 if (MINGW OR MSVC)
@@ -53,6 +61,7 @@ elseif (MSCORE_INSTALL_SUFFIX)
       set(MSCORE_OUTPUT_NAME "${ExecutableName}${MSCORE_INSTALL_SUFFIX}")
 endif (MINGW OR MSVC)
 
+message("[cmake] MSCORE_OUTPUT_NAME: ${MSCORE_OUTPUT_NAME}")
 # If MSCORE_OUTPUT_NAME is set (e.g, when cmake is called by the user), the output executable will be
 # called MSCORE_OUTPUT_NAME instead of 'mscore'. This can be used to have MuseScore stable and unstable
 # both installed in the same prefix on a Linux system.
@@ -69,8 +78,78 @@ target_include_directories(mscore PRIVATE
       ${PROJECT_SOURCE_DIR}/thirdparty
       )
 
-target_link_libraries(mscore mscoreapp)
+# common
+set (BUILD_MU3 OFF)
+if (BUILD_UI_MU4)
+    if (BUILD_UI_MU4_WITH_MU3)
+        set (BUILD_MU3 ON)
+    endif(BUILD_UI_MU4_WITH_MU3)
+else (BUILD_UI_MU4)
+    set (BUILD_MU3 ON)
+endif(BUILD_UI_MU4)
 
+set(FREETYPE_LIB )
+if (USE_SYSTEM_FREETYPE)
+     set(FREETYPE_LIB ${FREETYPE_LIBRARIES})
+else (USE_SYSTEM_FREETYPE)
+     set(FREETYPE_LIB mscore_freetype)
+endif (USE_SYSTEM_FREETYPE)
+
+set(LINK_LIB
+    ${FREETYPE_LIB}
+    ${QT_LIBRARIES}
+    awl
+    global
+    global_old
+    ui
+    uicomponents
+    fonts
+    system
+    network
+    )
+
+if (BUILD_TELEMETRY_MODULE)
+    set(LINK_LIB ${LINK_LIB} telemetry)
+endif(BUILD_TELEMETRY_MODULE)
+
+if (BUILD_UI_MU4)
+    set(LINK_LIB ${LINK_LIB}
+        actions
+        appshell
+        cloud
+        context
+        shortcuts
+        workspace
+        mu4_audio
+        mu4_midi
+        midi_old
+        userscores
+        extensions
+        languages
+        importexport
+        notation
+        commonscene
+        palette
+        inspector
+        playback
+        instruments
+        plugins
+        )
+
+    if (BUILD_VST)
+        set(LINK_LIB ${LINK_LIB} vst)
+    endif(BUILD_VST)
+
+    add_dependencies(mscore workspaces)
+endif(BUILD_UI_MU4)
+
+if (BUILD_MU3)
+    set(LINK_LIB ${LINK_LIB}
+        mscoreapp
+    )
+endif()
+
+target_link_libraries(mscore ${LINK_LIB} )
 
 if (APPLE)
       set_target_properties (mscore
@@ -82,14 +161,12 @@ if (APPLE)
       #       XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT "dwarf-with-dsym")
 endif (APPLE)
 
+include (${PROJECT_SOURCE_DIR}/build/CopyFilesMacros.cmake)
 
 if (MINGW)
-   set (QT_WRC_EXECUTABLE        ${PROJECT_SOURCE_DIR}/build/wrc.bat)
-   set (QT_WINE_EXECUTABLE       ${PROJECT_SOURCE_DIR}/build/wine.bat)
    add_custom_command(
       OUTPUT ${PROJECT_BINARY_DIR}/resfile.o
-      COMMAND ${QT_WRC_EXECUTABLE} -i mscore.rc -o ${PROJECT_BINARY_DIR}/mscore.res
-      COMMAND ${QT_WINE_EXECUTABLE} /home/ws/.wine/drive_c/MingW/bin/windres.exe ${PROJECT_BINARY_DIR}/mscore.res -o ${PROJECT_BINARY_DIR}/resfile.o
+      COMMAND ${CMAKE_RC_COMPILER} -i mscore.rc -o ${PROJECT_BINARY_DIR}/resfile.o
       DEPENDS ${PROJECT_SOURCE_DIR}/mscore/data/mscore.rc
       WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/mscore/data
       )
@@ -128,7 +205,7 @@ if (MINGW)
    endforeach (QtLibrary ${QT_LIBRARIES})
    list(REMOVE_DUPLICATES QtInstallLibraries)
 
-   target_link_libraries(mscore ${QT_LIBRARIES})
+   # target_link_libraries(mscore ${QT_LIBRARIES})
 
    install( TARGETS mscore RUNTIME DESTINATION bin )
 
@@ -142,13 +219,9 @@ if (MINGW)
             ${DEPENDENCIES_DIR}/libssl-1_1-x64.dll
             DESTINATION bin)
       endif (Qt5Widgets_VERSION VERSION_GREATER_EQUAL "5.12.4")
-      install( FILES
-         ${DEPENDENCIES_DIR}/portaudio.dll RENAME libportaudio-x86_64-w64-mingw32.static.dll
-         DESTINATION bin)
    else (BUILD_64)
       install( FILES
          ${MINGW_ROOT}/bin/libgcc_s_dw2-1.dll
-         ${DEPENDENCIES_DIR}/portaudio.dll
          DESTINATION bin)
       if (Qt5Widgets_VERSION VERSION_GREATER_EQUAL "5.12.4")
          install( FILES
@@ -165,6 +238,7 @@ if (MINGW)
       ${DEPENDENCIES_DIR}/libsndfile-1.dll
       ${DEPENDENCIES_DIR}/libvorbis.dll
       ${DEPENDENCIES_DIR}/libvorbisfile.dll
+	  ${DEPENDENCIES_DIR}/portaudio.dll
       ${QT_INSTALL_BINS}/libEGL.dll
       ${QT_INSTALL_BINS}/libGLESv2.dll
       ${QT_INSTALL_BINS}/opengl32sw.dll
@@ -172,6 +246,16 @@ if (MINGW)
       ${QtInstallLibraries}
       ${PROJECT_SOURCE_DIR}/build/qt.conf
       DESTINATION bin)
+   if (Qt5Widgets_VERSION VERSION_GREATER_EQUAL "5.14.0")
+      install( FILES
+         ${QT_INSTALL_BINS}/Qt5QmlModels.dll
+         DESTINATION bin)
+   endif (Qt5Widgets_VERSION VERSION_GREATER_EQUAL "5.14.0")
+   if (Qt5Widgets_VERSION VERSION_GREATER_EQUAL "5.15.0")
+      install( FILES
+         ${QT_INSTALL_BINS}/Qt5QmlWorkerScript.dll
+         DESTINATION bin)
+   endif (Qt5Widgets_VERSION VERSION_GREATER_EQUAL "5.15.0")
    if (Qt5Widgets_VERSION VERSION_LESS "5.12.4")
       install( FILES
          ${MINGW_ROOT}/opt/bin/libeay32.dll
@@ -345,6 +429,12 @@ else (MINGW)
       if (USE_WEBENGINE)
          list(APPEND dlls_to_copy "${QT_INSTALL_BINS}/Qt5WebEngineWidgets.dll" "${QT_INSTALL_BINS}/Qt5WebEngineCore.dll")
       endif(USE_WEBENGINE)
+      if (Qt5Widgets_VERSION VERSION_GREATER_EQUAL "5.14.0")
+         list(APPEND dlls_to_copy "${QT_INSTALL_BINS}/Qt5QmlModels.dll")
+      endif (Qt5Widgets_VERSION VERSION_GREATER_EQUAL "5.14.0")
+      if (Qt5Widgets_VERSION VERSION_GREATER_EQUAL "5.15.0")
+         list(APPEND dlls_to_copy "${QT_INSTALL_BINS}/Qt5QmlWorkerScript.dll")
+      endif (Qt5Widgets_VERSION VERSION_GREATER_EQUAL "5.15.0")
 
       set(CMAKE_FIND_LIBRARY_PREFIX "")
       set(CMAKE_FIND_LIBRARY_SUFFIXES ".dll")
@@ -372,8 +462,6 @@ else (MINGW)
       set( output_dir_for_dlls "${PROJECT_BINARY_DIR}/../msvc.install${ARCH_TYPE}/bin")
 
       COPY_FILES_INTO_DIRECTORY_IF_CHANGED( "${dlls_to_copy}" ${output_dir_for_dlls}  mscore)
-
-      add_dependencies(mscore pluginDocumentation)
 
       # Keep dependencies in alphabetical order. Changes made to this list
       # might need to be made in "build/Linux+BSD/portable/copy-libs" too.
@@ -473,6 +561,7 @@ if (APPLE)
      install (FILES
       ../fonts/gootville/GootvilleText.otf
       ../fonts/mscore/MScoreText.ttf
+      ../fonts/mscore/MusescoreIcon.ttf
       ../fonts/musejazz/MuseJazzText.otf
       ../fonts/campania/Campania.otf
       ../fonts/FreeSerif.ttf
@@ -483,6 +572,7 @@ if (APPLE)
       ../fonts/mscoreTab.ttf
       ../fonts/mscore-BC.ttf
       ../fonts/bravura/BravuraText.otf
+      ../fonts/leland/Leland.otf
      DESTINATION ${Mscore_SHARE_NAME}${Mscore_INSTALL_NAME}fonts
      )
      install(DIRECTORY

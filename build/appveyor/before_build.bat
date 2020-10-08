@@ -1,16 +1,16 @@
 :: set platform-dependent variables
 IF "%PLATFORM%" == "x64" (
-  SET "QTURL=https://utils.musescore.org.s3.amazonaws.com/qt598_msvc2017_64.7z"
+  SET "QTURL=https://utils.musescore.org.s3.amazonaws.com/qt599_msvc2017_64.7z"
   SET "QTDIR=%cd%\qt\msvc2017_64" & :: uncomment to use our Qt
-  SET "QTCACHE=qt598_msvc2017_64.7z" & :: bump version here and .appveyor.yml to trigger cache rebuild when upgrading Qt
-  :: SET "QTDIR=C:\Qt\5.12.4\msvc2017_64" & :: uncomment to use AppVeyor's Qt
+  SET "QTCACHE=qt599_msvc2017_64.7z" & :: bump version here and .appveyor.yml to trigger cache rebuild when upgrading Qt
+  :: SET "QTDIR=C:\Qt\5.12.9\msvc2017_64" & :: uncomment to use AppVeyor's Qt
   SET "TARGET_PROCESSOR_BITS=64"
   SET "TARGET_PROCESSOR_ARCH=x86_64"
 ) ELSE (
-  SET "QTURL=https://utils.musescore.org.s3.amazonaws.com/qt598_msvc2015.7z"
+  SET "QTURL=https://utils.musescore.org.s3.amazonaws.com/qt599_msvc2015.7z"
   SET "QTDIR=%cd%\qt\msvc2015" & :: uncomment to use our Qt
-  SET "QTCACHE=qt598_msvc2015.7z" & :: bump version here and .appveyor.yml to trigger cache rebuild when upgrading Qt
-  :: SET "QTDIR=C:\Qt\5.12.4\msvc2017" & :: uncomment to use AppVeyor's Qt
+  SET "QTCACHE=qt599_msvc2015.7z" & :: bump version here and .appveyor.yml to trigger cache rebuild when upgrading Qt
+  :: SET "QTDIR=C:\Qt\5.12.9\msvc2017" & :: uncomment to use AppVeyor's Qt
   SET "TARGET_PROCESSOR_BITS=32"
   SET "TARGET_PROCESSOR_ARCH=x86"
 )
@@ -33,7 +33,7 @@ XCOPY ccache "C:\ccache" /E /I /Y
 
 CD C:\MuseScore
 IF NOT EXIST dependencies.zip ( START " " /wait "C:\cygwin64\bin\wget.exe" --no-check-certificate "https://s3.amazonaws.com/utils.musescore.org/dependencies.7z" -O dependencies.zip )
-:: assumung dependencies.zip to contain the dependencies directory (with is subdirs)
+:: assuming dependencies.zip to contain the dependencies directory (with is subdirs)
 START " " /wait "7z" x -y dependencies.zip > nul
 :: test
 CD dependencies\include
@@ -47,7 +47,8 @@ START " " /wait "7z" x -y %TOOLS_ARCHIVE% > nul
 CD C:\MuseScore
 
 :: is MuseScore stable? Check here, no grep in PATH later on
-for /f "delims=" %%i in ('grep "^[[:blank:]]*set( *MSCORE_UNSTABLE \+TRUE *)" C:\MuseScore\CMakeLists.txt') do set NIGHTLY_BUILD=%%i
+for /f "delims=" %%i in ('bash -c "cmake -P config.cmake | grep -o 'MSCORE_UNSTABLE  *TRUE'"') do set NIGHTLY_BUILD=%%i
+for /f %%i in ('bash -c "cmake -P config.cmake | sed -n -e 's/^.*MUSESCORE_VERSION_FULL  *//p'"') do set MUSESCORE_VERSION_FULL=%%i
 
 :: get revision number
 SET "PATH=%QTDIR%\bin;%PATH%"

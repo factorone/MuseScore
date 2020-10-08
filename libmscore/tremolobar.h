@@ -17,7 +17,6 @@
 #include "pitchvalue.h"
 
 namespace Ms {
-
 //---------------------------------------------------------
 //   @@ TremoloBar
 //
@@ -26,43 +25,58 @@ namespace Ms {
 //   @P play       bool         play tremolo bar
 //---------------------------------------------------------
 
-class TremoloBar final : public Element {
-      Spatium _lw;
-      qreal _userMag     { 1.0   };       // allowed 0.1 - 10.0
-      bool  _play        { true  };
+enum class TremoloBarType {
+    DIP = 0,
+    DIVE,
+    RELEASE_UP,
+    INVERTED_DIP,
+    RETURN,
+    RELEASE_DOWN,
+    CUSTOM
+};
 
-      QList<PitchValue> _points;
+class TremoloBar final : public Element
+{
+public:
+    TremoloBar(Score* s);
 
-      QPolygonF polygon;                  // computed by layout
+    TremoloBar* clone() const override { return new TremoloBar(*this); }
+    ElementType type() const override { return ElementType::TREMOLOBAR; }
 
-   public:
-      TremoloBar(Score* s);
-      virtual TremoloBar* clone() const override  { return new TremoloBar(*this); }
-      virtual ElementType type() const override   { return ElementType::TREMOLOBAR; }
-      virtual void layout() override;
-      virtual void draw(QPainter*) const override;
-      virtual void write(XmlWriter&) const override;
-      virtual void read(XmlReader& e) override;
+    void layout() override;
+    void draw(QPainter*) const override;
 
-      QList<PitchValue>& points()                { return _points; }
-      const QList<PitchValue>& points() const    { return _points; }
-      void setPoints(const QList<PitchValue>& p) { _points = p;    }
+    void write(XmlWriter&) const override;
+    void read(XmlReader& e) override;
 
-      virtual QVariant getProperty(Pid propertyId) const override;
-      virtual bool setProperty(Pid propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(Pid) const override;
+    QList<PitchValue>& points() { return m_points; }
+    const QList<PitchValue>& points() const { return m_points; }
+    void setPoints(const QList<PitchValue>& p) { m_points = p; }
 
-      qreal userMag() const               { return _userMag;   }
-      void setUserMag(qreal m)            { _userMag = m;      }
+    QVariant getProperty(Pid propertyId) const override;
+    bool setProperty(Pid propertyId, const QVariant&) override;
+    QVariant propertyDefault(Pid) const override;
 
-      void setLineWidth(Spatium v)        { _lw = v;        }
-      Spatium lineWidth() const           { return _lw;     }
+    qreal userMag() const { return m_userMag; }
+    void setUserMag(qreal m) { m_userMag = m; }
 
-      bool play() const                   { return _play;    }
-      void setPlay(bool val)              { _play = val;     }
-      };
+    void setLineWidth(Spatium v) { m_lw = v; }
+    Spatium lineWidth() const { return m_lw; }
 
+    bool play() const { return m_play; }
+    void setPlay(bool val) { m_play = val; }
 
+private:
+    TremoloBarType parseTremoloBarTypeFromCurve(const QList<PitchValue>& curve) const;
+    void updatePointsByTremoloBarType(const TremoloBarType type);
+
+    Spatium m_lw;
+    qreal m_userMag = 1.0;           // allowed 0.1 - 10.0
+    bool m_play = true;
+
+    QList<PitchValue> m_points;
+
+    QPolygonF m_polygon;                    // computed by layout
+};
 }     // namespace Ms
 #endif
-

@@ -17,29 +17,27 @@
 #include "stem.h"
 
 namespace Ms {
-
 //---------------------------------------------------------
 //   @@ StemSlash
 ///    used for grace notes of type acciaccatura
 //---------------------------------------------------------
 
-class StemSlash final : public Element {
-      QLineF line;
+class StemSlash final : public Element
+{
+    QLineF line;
 
-   public:
-      StemSlash(Score* s = 0) : Element(s)   {}
+public:
+    StemSlash(Score* s = 0)
+        : Element(s) {}
 
-      virtual qreal mag() const          { return parent()->mag(); }
-      void setLine(const QLineF& l);
+    qreal mag() const override { return parent()->mag(); }
+    void setLine(const QLineF& l);
 
-      virtual StemSlash* clone() const   { return new StemSlash(*this); }
-      virtual ElementType type() const   { return ElementType::STEM_SLASH; }
-      virtual void draw(QPainter*) const;
-      virtual void layout();
-      Chord* chord() const               { return (Chord*)parent(); }
-      };
-
-
+    StemSlash* clone() const override { return new StemSlash(*this); }
+    ElementType type() const override { return ElementType::STEM_SLASH; }
+    void draw(QPainter*) const override;
+    void layout() override;
+    Chord* chord() const { return (Chord*)parent(); }
+};
 }     // namespace Ms
 #endif
-

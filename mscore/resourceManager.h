@@ -17,9 +17,8 @@
 #include "downloadUtils.h"
 
 namespace Ms {
-
 class ResourceManager : public QDialog, public Ui::Resource
-   {
+{
     Q_OBJECT
 
     virtual void hideEvent(QHideEvent*);
@@ -30,44 +29,40 @@ class ResourceManager : public QDialog, public Ui::Resource
     bool verifyLanguageFile(QString filename, QString hash);
 
 public:
-    explicit ResourceManager(QWidget *parent = 0);
+    explicit ResourceManager(QWidget* parent = 0);
     void selectLanguagesTab();
     void selectExtensionsTab();
 
-    static inline QString baseAddr() { return "http://extensions.musescore.org/3.4/"; }
+    static inline QString baseAddr() { return "http://extensions.musescore.org/4.0/"; }
 
 private:
-    QMap <QPushButton *, QString> languageButtonMap; 	// QPushButton -> filename
-    QMap <QPushButton *, QString> languageButtonHashMap;// QPushButton -> hash of the file
+    QMap <QPushButton*, QString> languageButtonMap;         // QPushButton -> filename
+    QMap <QPushButton*, QString> languageButtonHashMap;   // QPushButton -> hash of the file
 
 private slots:
     void downloadLanguage();
     void downloadExtension();
     void uninstallExtension();
-   };
+};
 
 class ExtensionFileSize : public QTableWidgetItem
-   {
-      int _size;
+{
+    int _size;
 
-   public:
-      ExtensionFileSize(const int i);
-      int getSize() const { return _size; }
-      bool operator<(const QTableWidgetItem& nextItem) const;
-      static int int2size(QChar sizeType, int i);
-
-   };
+public:
+    ExtensionFileSize(const int i);
+    int getSize() const { return _size; }
+    bool operator<(const QTableWidgetItem& nextItem) const;
+};
 
 class LanguageFileSize : public QTableWidgetItem
-   {
-      double _size;
+{
+    double _size;
 
-   public:
-      LanguageFileSize(const double d);
-      double getSize() const { return _size; }
-      bool operator<(const QTableWidgetItem& nextItem) const;
-
-   };
-
+public:
+    LanguageFileSize(const double d);
+    double getSize() const { return _size; }
+    bool operator<(const QTableWidgetItem& nextItem) const;
+};
 }
 #endif // RESOURCE_H

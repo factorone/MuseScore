@@ -16,25 +16,21 @@
 #include "stafftext.h"
 
 namespace Ms {
-
 //---------------------------------------------------------
 //   SystemText
 //---------------------------------------------------------
 
-class SystemText final : public StaffTextBase  {
-      virtual void layout() override;
-      virtual Sid getPropertyStyle(Pid) const override;
-      virtual QVariant propertyDefault(Pid id) const override;
+class SystemText final : public StaffTextBase
+{
+    void layout() override;
+    QVariant propertyDefault(Pid id) const override;
 
-   public:
-      SystemText(Score* = 0, Tid = Tid::SYSTEM);
+public:
+    SystemText(Score* = 0, Tid = Tid::SYSTEM);
 
-      virtual SystemText* clone() const override    { return new SystemText(*this); }
-      virtual ElementType type() const override     { return ElementType::SYSTEM_TEXT; }
-      Segment* segment() const                      { return (Segment*)parent(); }
-      };
-
-
+    SystemText* clone() const override { return new SystemText(*this); }
+    ElementType type() const override { return ElementType::SYSTEM_TEXT; }
+    Segment* segment() const { return (Segment*)parent(); }
+};
 }     // namespace Ms
 #endif
-

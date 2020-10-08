@@ -1,0 +1,4 @@
+module MuseScore.Extensions
+ExtensionsPage 1.0 ExtensionsPage.qml
+ExtensionsListView 1.0 ExtensionsListView.qml
+ExtensionItem 1.0 ExtensionItem.qml

@@ -15,6 +15,7 @@
 
 #include "globals.h"
 #include "libmscore/element.h"
+#include "libmscore/elementgroup.h"
 #include "libmscore/durationtype.h"
 #include "libmscore/mscore.h"
 #include "libmscore/mscoreview.h"
@@ -22,7 +23,6 @@
 #include "libmscore/harmony.h"
 
 namespace Ms {
-
 class ChordRest;
 class Rest;
 class Element;
@@ -47,6 +47,9 @@ class Tuplet;
 class FretDiagram;
 class Bend;
 class TremoloBar;
+class TimeSig;
+class StaffTextBase;
+class Articulation;
 
 #ifdef Q_OS_MAC
 #define CONTROL_MODIFIER Qt::AltModifier
@@ -62,372 +65,445 @@ enum class MagIdx : char;
 //   ViewState
 //---------------------------------------------------------
 
-enum class ViewState {
-      NORMAL,
-      DRAG,
-      DRAG_OBJECT,
-      EDIT,
-      DRAG_EDIT,
-      LASSO,
-      NOTE_ENTRY,
-      PLAY,
-      ENTRY_PLAY,
+struct SmoothPanSettings {
+    // these are all actually loaded from the loadFromPreferences method so don't change these initializations to change the default values,
+    // change the corresponding default preference value
+    bool enabled                        { false };
 
-      FOTO,
-      FOTO_DRAG,
-      FOTO_DRAG_EDIT,
-      FOTO_DRAG_OBJECT,
-      FOTO_LASSO,
-      };
+    double controlModifierBase          { 1 };      // initial speed modifier
+    double controlModifierSteps         { 0.01 };   // modification steps for the modifier
+    double minContinuousModifier        { 0.2 };    // minimum speed, 0.2 was chosen instead of 0 to remove stuttering
+    double maxContinuousModifier        { 5 };      // maximum speed
+
+    // Changing the distance will change the sensitivity/accuracy/jitter of the algorithm. Larger absolute values are generally smoother.
+    double leftDistance                 { -250 };   // decelarate
+    double leftDistance1                { -125 };
+    double leftDistance2                { -50 };
+    double leftDistance3                { -25 };
+    double rightDistance                { 500 };    // accelerate
+    double rightDistance1               { 250 };
+    double rightDistance2               { 125 };
+    double rightDistance3               { 50 };
+    // used to smooth back to normal speed when the playback cursor is getting closer
+    double leftMod1                     { 0.8 };    // minimum speed at the first level
+    double leftMod2                     { 0.9 };    // etc
+    double leftMod3                     { 0.95 };
+    // used to smooth back to normal speed when the control cursor is getting closer to the playback cursor
+    double rightMod1                    { 1.2 };    // maximum speed at the first level
+    double rightMod2                    { 1.1 };    // etc
+    double rightMod3                    { 1.05 };
+
+    double controlCursorScreenPos       { 0.3 };
+    bool teleportLeftEnabled            { true };
+    bool teleportRightEnabled           { false };
+
+    bool advancedWeighting              { false };    // enables the 'smart weight'
+    double normalWeight                 { 1 };
+    double smartWeight                  { 0 };        // uses the distance between the 2 cursors to calculate the speed of the control cursor
+    int cursorTimerDuration             { 1000 };     // how often the smart weight is updated
+
+    void loadFromPreferences();
+};
+
+//---------------------------------------------------------
+//   ViewState
+//---------------------------------------------------------
+
+enum class ViewState {
+    NORMAL,
+    DRAG,
+    DRAG_OBJECT,
+    EDIT,
+    DRAG_EDIT,
+    LASSO,
+    NOTE_ENTRY,
+    PLAY,
+    ENTRY_PLAY,
+
+    FOTO,
+    FOTO_DRAG,
+    FOTO_DRAG_EDIT,
+    FOTO_DRAG_OBJECT,
+    FOTO_LASSO,
+};
 
 //---------------------------------------------------------
 //   ScoreView
 //---------------------------------------------------------
 
-class ScoreView : public QWidget, public MuseScoreView {
-      Q_OBJECT
+class ScoreView : public QWidget, public MuseScoreView
+{
+    Q_OBJECT
 
-      ViewState state;
-      OmrView* _omrView;
+    ViewState state;
+    OmrView* _omrView;
 
-      // the next elements are used during dragMove to give some visual
-      // feedback:
-      //    dropTarget:       if valid, the element is drawn in a different color
-      //                      to mark it as a valid drop target
-      //    dropRectangle:    if valid, the rectangle is filled with a
-      //                      color to visualize a valid drop area
-      //    dropAnchor:       if valid the line is drawn from the current
-      //                      cursor position to the current anchor point
-      // Note:
-      //    only one of the elements is active during drag
+    // the next elements are used during dragMove to give some visual
+    // feedback:
+    //    dropTarget:       if valid, the element is drawn in a different color
+    //                      to mark it as a valid drop target
+    //    dropRectangle:    if valid, the rectangle is filled with a
+    //                      color to visualize a valid drop area
+    //    dropAnchor:       if valid the line is drawn from the current
+    //                      cursor position to the current anchor point
+    // Note:
+    //    only one of the elements is active during drag
 
-      const Element* dropTarget;    ///< current drop target during dragMove
-      QRectF dropRectangle;         ///< current drop rectangle during dragMove
-      QLineF dropAnchor;            ///< line to current anchor point during dragMove
+    const Element* dropTarget;      ///< current drop target during dragMove
+    QRectF dropRectangle;           ///< current drop rectangle during dragMove
+    QLineF dropAnchor;              ///< line to current anchor point during dragMove
+    QVector<QLineF> m_dropAnchorLines;
 
-      QTransform _matrix, imatrix;
-      MagIdx _magIdx;
+    QTransform _matrix, imatrix;
+    MagIdx _magIdx;
 
-      QFocusFrame* focusFrame;
+    QFocusFrame* focusFrame;
 
-      EditData editData;
+    EditData editData;
+    std::vector<std::unique_ptr<ElementGroup> > dragGroups;
 
-      //--input state:
-      PositionCursor* _cursor;
-      ShadowNote* shadowNote;
+    //--input state:
+    PositionCursor* _cursor;
 
-      // Realtime state:      Note: always set allowRealtimeRests to desired value before starting a timer.
-      QTimer* realtimeTimer;   // multi-shot timer for advancing in automatic realtime mode
-      QTimer* extendNoteTimer; // single-shot timer for initial advancement when a note is held
-      bool allowRealtimeRests; // Allow entering rests in realtime mode? (See note above)
+    PositionCursor* _controlCursor;
+    SmoothPanSettings _panSettings;
+    double _timeElapsed;
+    double _controlModifier;        // a control modifier of 1 means that the cursor is moving at it's normal speed
+                                    // if all measures are of the same size, this will stay equal to 1 (unless the distance settings are changed, and make the algorithm over-sensitive)
+    double _playbackCursorOldPosition;
+    double _playbackCursorNewPosition;
+    double _playbackCursorDistanceTravelled;
 
-      bool tripleClickPending = false;
-      bool popupActive = false;
+    ShadowNote* shadowNote;
 
-      // Loop In/Out marks in the score
-      PositionCursor* _curLoopIn;
-      PositionCursor* _curLoopOut;
+    // Realtime state:      Note: always set allowRealtimeRests to desired value before starting a timer.
+    QTimer* realtimeTimer;     // multi-shot timer for advancing in automatic realtime mode
+    QTimer* extendNoteTimer;   // single-shot timer for initial advancement when a note is held
+    bool allowRealtimeRests;   // Allow entering rests in realtime mode? (See note above)
 
-      // Continuous panel
-      ContinuousPanel* _continuousPanel;
+    bool tripleClickPending = false;
+    bool popupActive = false;
+    bool modifySelection = false;
+    Element* elementToSelect = nullptr;
 
-      Lasso* lasso;           ///< temporarily drawn lasso selection
-      FotoLasso* _foto;
+    // Loop In/Out marks in the score
+    PositionCursor* _curLoopIn;
+    PositionCursor* _curLoopOut;
 
-      QColor _bgColor;
-      QColor _fgColor;
-      QPixmap* _bgPixmap;
-      QPixmap* _fgPixmap;
+    // Continuous panel
+    ContinuousPanel* _continuousPanel;
 
-      // By default when the view will prevent viewpoint changes if
-      // it is inactive. Set this flag to true to change this behaviour.
-      bool _moveWhenInactive = false;
+    Lasso* lasso;             ///< temporarily drawn lasso selection
+    FotoLasso* _foto;
 
-      bool _blockShowEdit = false;
+    QColor _bgColor;
+    QColor _fgColor;
+    QPixmap* _bgPixmap;
+    QPixmap* _fgPixmap;
 
-      virtual void paintEvent(QPaintEvent*);
-      void paint(const QRect&, QPainter&);
+    // By default when the view will prevent viewpoint changes if
+    // it is inactive. Set this flag to true to change this behaviour.
+    bool _moveWhenInactive = false;
 
-      void objectPopup(const QPoint&, Element*);
-      void measurePopup(QContextMenuEvent* ev, Measure*);
+    bool _blockShowEdit = false;
 
-      void saveChord(XmlWriter&);
+    virtual void paintEvent(QPaintEvent*);
+    void paint(const QRect&, QPainter&);
 
-      virtual bool event(QEvent* event) override;
-      virtual bool gestureEvent(QGestureEvent*);            // ??
-      virtual void resizeEvent(QResizeEvent*) override;
-      virtual void dragEnterEvent(QDragEnterEvent*) override;
-      virtual void dragLeaveEvent(QDragLeaveEvent*) override;
-      virtual void dragMoveEvent(QDragMoveEvent*) override;
-      virtual void dropEvent(QDropEvent*) override;
-      virtual void focusInEvent(QFocusEvent*) override;
-      virtual void focusOutEvent(QFocusEvent*) override;
+    void objectPopup(const QPoint&, Element*);
+    void measurePopup(QContextMenuEvent* ev, Measure*);
 
-      virtual void wheelEvent(QWheelEvent*) override;
-      virtual void mouseMoveEvent(QMouseEvent*) override;
-      virtual void mousePressEvent(QMouseEvent*) override;
-      virtual void mouseReleaseEvent(QMouseEvent*) override;
-      virtual void mouseDoubleClickEvent(QMouseEvent*);
+    void saveChord(XmlWriter&);
 
-      virtual void keyPressEvent(QKeyEvent*) override;
-      virtual void keyReleaseEvent(QKeyEvent*) override;
-      virtual void inputMethodEvent(QInputMethodEvent*) override;
+    virtual bool event(QEvent* event) override;
+    virtual bool gestureEvent(QGestureEvent*);              // ??
+    virtual void resizeEvent(QResizeEvent*) override;
+    virtual void dragEnterEvent(QDragEnterEvent*) override;
+    virtual void dragLeaveEvent(QDragLeaveEvent*) override;
+    virtual void dragMoveEvent(QDragMoveEvent*) override;
+    virtual void dropEvent(QDropEvent*) override;
+    virtual void focusInEvent(QFocusEvent*) override;
+    virtual void focusOutEvent(QFocusEvent*) override;
 
-      virtual void contextMenuEvent(QContextMenuEvent*) override;
+    virtual void wheelEvent(QWheelEvent*) override;
+    virtual void mouseMoveEvent(QMouseEvent*) override;
+    virtual void mousePressEvent(QMouseEvent*) override;
+    virtual void mouseReleaseEvent(QMouseEvent*) override;
+    virtual void mouseDoubleClickEvent(QMouseEvent*);
 
-      void mousePressEventNormal(QMouseEvent*);
-      void escapeCmd();
-      bool startTextEditingOnMouseRelease(QMouseEvent*);
-      void adjustCursorForTextEditing(QMouseEvent*);
+    virtual void keyPressEvent(QKeyEvent*) override;
+    virtual void keyReleaseEvent(QKeyEvent*) override;
+    virtual void inputMethodEvent(QInputMethodEvent*) override;
 
-      void constraintCanvas(int *dxx, int *dyy);
-      void contextItem(Element*);
-      void lassoSelect();
+    bool handleArrowKeyPress(const QKeyEvent*);
 
-      void setShadowNote(const QPointF&);
-      void drawElements(QPainter& p,QList<Element*>& el, Element* editElement);
-      bool dragTimeAnchorElement(const QPointF& pos);
-      bool dragMeasureAnchorElement(const QPointF& pos);
-      virtual void lyricsTab(bool back, bool end, bool moveOnly) override;
-      virtual void lyricsReturn() override;
-      virtual void lyricsEndEdit() override;
-      virtual void lyricsUpDown(bool up, bool end) override;
-      virtual void lyricsMinus() override;
-      virtual void lyricsUnderscore() override;
-      virtual void textTab(bool back = false) override;
-      void harmonyEndEdit();
-      void harmonyTab(bool back);
-      void harmonyBeatsTab(bool noterest, bool back);
-      void harmonyTicksTab(const Fraction& ticks);
-      void figuredBassTab(bool meas, bool back);
-      void figuredBassTicksTab(const Fraction& ticks);
-      void figuredBassEndEdit();
-      void realtimeAdvance(bool allowRests);
-      void cmdAddFret(int fret);
-      void cmdAddChordName(HarmonyType ht);
-      void cmdAddText(Tid tid, Tid customTid = Tid::DEFAULT);
-      void cmdEnterRest(const TDuration&);
-      void cmdEnterRest();
-      void cmdTuplet(int n, ChordRest*);
-      void cmdTuplet(int);
-      void cmdCreateTuplet(ChordRest* cr, Tuplet* tuplet);
-      void cmdRepeatSelection();
-      void cmdChangeEnharmonic(bool);
+    virtual void contextMenuEvent(QContextMenuEvent*) override;
 
-      MeasureBase* insertMeasure(ElementType, MeasureBase*);
-      MeasureBase* checkSelectionStateForInsertMeasure();
+    void mousePressEventNormal(QMouseEvent*);
+    void escapeCmd();
+    bool startTextEditingOnMouseRelease(QMouseEvent*);
+    void adjustCursorForTextEditing(QMouseEvent*);
 
-      void appendMeasures(int, ElementType);
-      MeasureBase* appendMeasure(ElementType);
-      void cmdInsertMeasure(ElementType);
-      void createElementPropertyMenu(Element* e, QMenu*);
-      void genPropertyMenu1(Element* e, QMenu* popup);
-      void genPropertyMenuText(Element* e, QMenu* popup);
-      void elementPropertyAction(const QString&, Element* e);
-      void paintPageBorder(QPainter& p, Page* page);
-      bool dropCanvas(Element*);
-      void editCmd(const QString&);
-      void setLoopCursor(PositionCursor* curLoop, const Fraction& tick, bool isInPos);
-      void cmdMoveCR(bool left);
-      void cmdGotoElement(Element*);
-      bool checkCopyOrCut();
-      QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
-      void startFotomode();
-      void stopFotomode();
-      void startFotoDrag();
-      void endFotoDrag();
-      void endFotoDragEdit();
-      QImage getRectImage(const QRectF& rect, double dpi, bool transparent, bool printMode);
+    void constraintCanvas(int* dxx, int* dyy);
 
-      virtual void startEdit();
-      void endEdit();
+    void setShadowNote(const QPointF&);
+    void drawElements(QPainter& p,QList<Element*>& el, Element* editElement);
+    bool dragTimeAnchorElement(const QPointF& pos);
+    bool dragMeasureAnchorElement(const QPointF& pos);
+    virtual void lyricsTab(bool back, bool end, bool moveOnly) override;
+    virtual void lyricsReturn() override;
+    virtual void lyricsEndEdit() override;
+    virtual void lyricsUpDown(bool up, bool end) override;
+    virtual void lyricsMinus() override;
+    virtual void lyricsUnderscore() override;
+    virtual void textTab(bool back = false) override;
+    void harmonyTab(bool back);
+    void harmonyBeatsTab(bool noterest, bool back);
+    void harmonyTicksTab(const Fraction& ticks);
+    void figuredBassTab(bool meas, bool back);
+    void figuredBassTicksTab(const Fraction& ticks);
+    void realtimeAdvance(bool allowRests);
+    void cmdAddFret(int fret);
+    void cmdAddChordName(HarmonyType ht);
+    void cmdAddText(Tid tid, Tid customTid = Tid::DEFAULT, PropertyFlags pf = PropertyFlags::STYLED,Placement p = Placement::ABOVE);
+    void cmdEnterRest(const TDuration&);
+    void cmdEnterRest();
+    void cmdTuplet(int n, ChordRest*);
+    void cmdTuplet(int);
+    void cmdCreateTuplet(ChordRest* cr, Tuplet* tuplet);
+    void cmdRepeatSelection();
+    void cmdChangeEnharmonic(bool);
 
-      void startDrag();
-      void endDrag();
+    MeasureBase* insertMeasure(ElementType, MeasureBase*);
+    MeasureBase* checkSelectionStateForInsertMeasure();
 
-      void endDragEdit();
+    void appendMeasures(int, ElementType);
+    MeasureBase* appendMeasure(ElementType);
+    void cmdInsertMeasure(ElementType);
+    void createElementPropertyMenu(Element* e, QMenu*);
+    void genPropertyMenu1(Element* e, QMenu* popup);
+    void genPropertyMenuText(Element* e, QMenu* popup);
+    void elementPropertyAction(const QString&, Element* e);
+    void paintPageBorder(QPainter& p, Page* page);
+    bool dropCanvas(Element*);
+    void editCmd(const QString&);
+    void setLoopCursor(PositionCursor* curLoop, const Fraction& tick, bool isInPos);
+    void cmdMoveCR(bool left);
+    void cmdGotoElement(Element*);
+    bool checkCopyOrCut();
+    QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
+    void startFotomode();
+    void stopFotomode();
+    void startFotoDrag();
+    void endFotoDrag();
+    void endFotoDragEdit();
+    QImage getRectImage(const QRectF& rect, double dpi, bool transparent, bool printMode);
 
-      void startNoteEntry();
-      virtual void startNoteEntryMode() override;
-      void endNoteEntry();
+    void startEdit(bool editMode = true);
+    void endEdit();
 
-      void endLasso();
-      Element* getDropTarget(EditData&);
+    void startDrag();
+    void endDrag();
 
-   private slots:
-      void posChanged(POS pos, unsigned tick);
-      void loopToggled(bool);
-      void triggerCmdRealtimeAdvance();
-      void cmdRealtimeAdvance();
-      void extendCurrentNote();
-      void seqStopped();
-      void tripleClickTimeOut();
+    void endDragEdit();
 
-   public slots:
-      void setViewRect(const QRectF&);
+    void startNoteEntry();
+    virtual void startNoteEntryMode() override;
+    void endNoteEntry();
 
-      void deselectAll();
+    void endLasso();
+    Element* getDropTarget(EditData&);
 
-      void editCopy();
-      void editCut();
-      void editPaste();
-      void editSwap();
+private slots:
+    void posChanged(POS pos, unsigned tick);
+    void loopToggled(bool);
+    void triggerCmdRealtimeAdvance();
+    void cmdRealtimeAdvance();
+    void extendCurrentNote();
+    void seqStopped();
+    void tripleClickTimeOut();
 
-      void normalCut();
-      void normalCopy();
-      void fotoModeCopy(bool includeLink = false);
-      bool normalPaste(Fraction scale = Fraction(1, 1));
-      void normalSwap();
+public slots:
+    void setViewRect(const QRectF&);
 
-      void cloneElement(Element* e);
-      void doFotoDragEdit(QMouseEvent* ev);
+    void deselectAll();
 
-      void updateContinuousPanel();
-      void ticksTab(const Fraction& ticks);     // helper function
+    void editCopy();
+    void editCut();
+    void editPaste();
+    void editSwap();
 
-   signals:
-      void viewRectChanged();
-      void scaleChanged(double);
-      void offsetChanged(double, double);
-      void sizeChanged();
+    void normalCut();
+    void normalCopy();
+    void fotoModeCopy(bool includeLink = false);
+    bool normalPaste(Fraction scale = Fraction(1, 1));
+    void normalSwap();
 
-   public:
-      ScoreView(QWidget* parent = 0);
-      ~ScoreView();
+    void setControlCursorVisible(bool v);
 
-      QPixmap* fgPixmap() { return _fgPixmap; }
+    void cloneElement(Element* e);
+    void doFotoDragEdit(QMouseEvent* ev);
 
-      virtual void startEdit(Element*, Grip) override;
-      virtual void startEditMode(Element*) override;
+    void updateContinuousPanel();
+    void ticksTab(const Fraction& ticks);       // helper function
 
-      void moveCursor(const Fraction& tick);
-      Fraction cursorTick() const;
-      void setCursorOn(bool);
-      void setBackground(QPixmap*);
-      void setBackground(const QColor&);
-      void setForeground(QPixmap*);
-      void setForeground(const QColor&);
+signals:
+    void viewRectChanged();
+    void scaleChanged(double);
+    void offsetChanged(double, double);
+    void sizeChanged();
 
-      Page* addPage();
-      virtual void setScore(Score* s);
-      virtual void removeScore()  { _score = 0; }
+public:
+    ScoreView(QWidget* parent = 0);
+    ~ScoreView();
 
-      void setMag(qreal m);
-      bool navigatorVisible() const;
-      void cmd(const QAction*);
-      void cmd(const char*);
+    QPixmap* fgPixmap() { return _fgPixmap; }
 
-      void startUndoRedo(bool);
-      void zoomStep(qreal step, const QPoint& pos);
-      void zoom(qreal _mag, const QPointF& pos);
-      void contextPopup(QContextMenuEvent* ev);
-      bool editKeyLyrics();
-      bool editKeySticking();
-      void dragScoreView(QMouseEvent* ev);
-      void doDragElement(QMouseEvent* ev);
-      void doDragLasso(QMouseEvent* ev);
-      void doDragFoto(QMouseEvent* ev);
-      void doDragEdit(QMouseEvent* ev);
-      bool testElementDragTransition(QMouseEvent* ev);
-      bool fotoEditElementDragTransition(QMouseEvent* ev);
-      void addSlur(const Slur* slurTemplate = nullptr);
-      void cmdAddSlur(ChordRest*, ChordRest*, const Slur*) override;
-      virtual void cmdAddHairpin(HairpinType);
-      void cmdAddNoteLine();
+    void startEdit(Element*, Grip) override;
+    void startEditMode(Element*);
 
-      bool noteEntryMode() const { return state == ViewState::NOTE_ENTRY; }
-      bool editMode() const      { return state == ViewState::EDIT; }
-      bool fotoMode() const;
+    void moveCursor(const Fraction& tick);
+    void moveControlCursor(const Fraction& tick);
+    bool isCursorDistanceReasonable();
+    void moveControlCursorNearCursor();
+    Fraction cursorTick() const;
+    void setCursorOn(bool);
+    void setBackground(QPixmap*);
+    void setBackground(const QColor&);
+    void setForeground(QPixmap*);
+    void setForeground(const QColor&);
 
-      virtual void setDropRectangle(const QRectF&);
-      virtual void setDropTarget(const Element*) override;
-      void setDropAnchor(const QLineF&);
-      const QTransform& matrix() const  { return _matrix; }
-      qreal mag() const;
-      qreal lmag() const;
-      MagIdx magIdx() const             { return _magIdx; }
-      void setMag(MagIdx idx, double mag);
-      qreal xoffset() const;
-      qreal yoffset() const;
-      void setOffset(qreal x, qreal y);
-      QSizeF fsize() const;
-      void screenNext();
-      void screenPrev();
-      void pageNext();
-      void pagePrev();
-      void pageTop();
-      void pageEnd();
-      QPointF toLogical(const QPoint& p) const   { return imatrix.map(QPointF(p)); }
-      QPointF toPhysical(const QPointF& p) const {return _matrix.map(p); }
-      QRectF toLogical(const QRectF& r) const    { return imatrix.mapRect(r); }
-      QRect toPhysical(const QRectF& r) const    { return _matrix.mapRect(r).toRect(); }
+    Page* addPage();
+    virtual void setScore(Score* s);
+    virtual void removeScore() { _score = 0; }
 
-      QRectF canvasViewport() const { return toLogical(geometry()); }
+    void setMag(qreal m);
+    bool navigatorVisible() const;
+    void cmd(const QAction*);
+    void cmd(const char*);
 
-      bool searchMeasure(int i);
-      bool searchPage(int i);
-      bool searchRehearsalMark(const QString& s);
-      void gotoMeasure(Measure*);
-      void setFocusRect();
-      void changeVoice(int voice);
-      virtual void drawBackground(QPainter* p, const QRectF& r) const;
-      bool fotoScoreViewDragTest(QMouseEvent*);
-      bool fotoScoreViewDragRectTest(QMouseEvent*);
-      void doDragFotoRect(QMouseEvent*);
-      void fotoContextPopup(QContextMenuEvent*);
-      bool fotoRectHit(const QPoint& p);
-      void paintRect(bool printMode, QPainter& p, const QRectF& r, double mag);
-      bool saveFotoAs(bool printMode, const QRectF&);
-      void fotoDragDrop(QMouseEvent*);
-      void changeEditElement(Element*);
+    void startUndoRedo(bool);
+    void zoomStep(qreal step, const QPoint& pos);
+    void zoom(qreal _mag, const QPointF& pos);
+    void contextPopup(QContextMenuEvent* ev);
+    bool editKeyLyrics();
+    bool editKeySticking();
+    void dragScoreView(QMouseEvent* ev);
+    void doDragElement(QMouseEvent* ev);
+    void doDragLasso(QMouseEvent* ev);
+    void doDragFoto(QMouseEvent* ev);
+    void doDragEdit(QMouseEvent* ev);
+    bool testElementDragTransition(QMouseEvent* ev);
+    bool fotoEditElementDragTransition(QMouseEvent* ev);
+    void cmdAddSlur(const Slur* slurTemplate = nullptr);
+    void addSlur(ChordRest*, ChordRest*, const Slur*) override;
+    virtual void cmdAddHairpin(HairpinType);
+    void cmdAddNoteLine();
 
-      void cmdAppendMeasures(int, ElementType);
-      void cmdInsertMeasures(int, ElementType);
+    void setEditElement(Element*);
+    void updateEditElement();
 
-      void cmdAddRemoveBreaks();
-      void cmdCopyLyricsToClipboard();
+    bool noteEntryMode() const { return state == ViewState::NOTE_ENTRY; }
+    bool editMode() const { return state == ViewState::EDIT; }
+    bool textEditMode() const { return editMode() && editData.element && editData.element->isTextBase(); }
+    bool hasEditGrips() const { return editData.element && editData.grips; }
+    bool fotoMode() const;
 
-      ScoreState mscoreState() const;
-      void setCursorVisible(bool v);
-      void showOmr(bool flag);
-      void midiNoteReceived(int pitch, bool chord, int velocity);
+    virtual void setDropRectangle(const QRectF&);
+    virtual void setDropTarget(const Element*) override;
+    void setDropAnchorLines(const QVector<QLineF>& anchorList);
+    const QTransform& matrix() const { return _matrix; }
+    qreal mag() const;
+    qreal lmag() const;
+    MagIdx magIdx() const { return _magIdx; }
+    void setMag(MagIdx idx, double mag);
+    qreal xoffset() const;
+    qreal yoffset() const;
+    void setOffset(qreal x, qreal y);
+    QSizeF fsize() const;
+    void screenNext();
+    void screenPrev();
+    void pageNext();
+    void pagePrev();
+    void pageTop();
+    void pageEnd();
+    QPointF toLogical(const QPoint& p) const { return imatrix.map(QPointF(p)); }
+    QPointF toPhysical(const QPointF& p) const { return _matrix.map(p); }
+    QRectF toLogical(const QRectF& r) const { return imatrix.mapRect(r); }
+    QRect toPhysical(const QRectF& r) const { return _matrix.mapRect(r).toRect(); }
 
-      virtual void moveCursor() override;
+    QRectF canvasViewport() const { return toLogical(geometry()); }
 
-      virtual void layoutChanged();
-      virtual void dataChanged(const QRectF&);
-      virtual void updateAll()    { update(); }
-      virtual void adjustCanvasPosition(const Element* el, bool playBack, int staff = -1) override;
-      virtual void setCursor(const QCursor& c) { QWidget::setCursor(c); }
-      virtual QCursor cursor() const { return QWidget::cursor(); }
-      void loopUpdate(bool val)   {  loopToggled(val); }
+    bool searchMeasure(int i);
+    bool searchPage(int i);
+    bool searchRehearsalMark(const QString& s);
+    void gotoMeasure(Measure*);
+    void setFocusRect();
+    void changeVoice(int voice);
+    virtual void drawBackground(QPainter* p, const QRectF& r) const;
+    bool fotoScoreViewDragTest(QMouseEvent*);
+    bool fotoScoreViewDragRectTest(QMouseEvent*);
+    void doDragFotoRect(QMouseEvent*);
+    void fotoContextPopup(QContextMenuEvent*);
+    bool fotoRectHit(const QPoint& p);
+    void paintRect(bool printMode, QPainter& p, const QRectF& r, double mag);
+    bool saveFotoAs(bool printMode, const QRectF&);
+    void fotoDragDrop(QMouseEvent*);
+    void changeEditElement(Element*);
 
-      void moveViewportToLastEdit();
+    void cmdAppendMeasures(int, ElementType);
+    void cmdInsertMeasures(int, ElementType);
 
-      void updateShadowNotes();
+    void cmdAddRemoveBreaks();
+    void cmdCopyLyricsToClipboard();
 
-      OmrView* omrView() const        { return _omrView; }
-      void setOmrView(OmrView* v)     { _omrView = v;    }
-      FotoLasso* fotoLasso() const    { return _foto;    }
-      Element* getEditElement();
-      void onElementDestruction(Element*) override;
+    ScoreState mscoreState() const;
+    void setCursorVisible(bool v);
+    void showOmr(bool flag);
+    void midiNoteReceived(int pitch, bool chord, int velocity);
 
-      virtual Element* elementNear(QPointF);
-      QList<Element*> elementsNear(QPointF);
-//      void editFretDiagram(FretDiagram*);
-      void editBendProperties(Bend*);
-      void editTremoloBarProperties(TremoloBar*);
-      EditData& getEditData()        { return editData; }
-      void changeState(ViewState);
+    virtual void moveCursor() override;
 
-      virtual const QRect geometry() const override { return QWidget::geometry(); }
+    SmoothPanSettings& panSettings() { return _panSettings; }
 
-      bool clickOffElement;
-      void updateGrips();
-      bool moveWhenInactive() const { return _moveWhenInactive; }
-      bool moveWhenInactive(bool move) { bool m = _moveWhenInactive; _moveWhenInactive = move; return m; }
-      };
+    virtual void layoutChanged();
+    virtual void dataChanged(const QRectF&);
+    virtual void updateAll() { update(); }
+    virtual void adjustCanvasPosition(const Element* el, bool playBack, int staff = -1) override;
+    virtual void setCursor(const QCursor& c) { QWidget::setCursor(c); }
+    virtual QCursor cursor() const { return QWidget::cursor(); }
+    void loopUpdate(bool val) { loopToggled(val); }
 
+    void moveViewportToLastEdit();
+
+    void updateShadowNotes();
+
+    OmrView* omrView() const { return _omrView; }
+    void setOmrView(OmrView* v) { _omrView = v; }
+    FotoLasso* fotoLasso() const { return _foto; }
+    Element* getEditElement();
+    void onElementDestruction(Element*) override;
+
+    virtual Element* elementNear(QPointF);
+    QList<Element*> elementsNear(QPointF);
+    void editArticulationProperties(Articulation*);
+    void editTimeSigProperties(TimeSig*);
+    void editStaffTextProperties(StaffTextBase*);
+    void selectInstrument(InstrumentChange*);
+    EditData& getEditData() { return editData; }
+    void changeState(ViewState);
+
+    virtual const QRect geometry() const override { return QWidget::geometry(); }
+
+    void updateGrips();
+    bool moveWhenInactive() const { return _moveWhenInactive; }
+    bool moveWhenInactive(bool move) { bool m = _moveWhenInactive; _moveWhenInactive = move; return m; }
+
+    QElapsedTimer _controlCursorTimer, _playbackCursorTimer;
+    friend struct SmoothPanSettings;
+
+private:
+    void drawAnchorLines(QPainter& painter);
+};
 } // namespace Ms
 #endif
-

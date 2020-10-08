@@ -43,8 +43,8 @@ function rebuild-docker-image() { # $1 is arch (e.g. x86_64)
 # Set AppImage name and automated update information according to
 # https://github.com/AppImage/AppImageSpec/blob/master/draft.md
 # Also set a label to distinguish when running multiple builds on one machine.
-if [ "$(grep '^[[:blank:]]*set( *MSCORE_UNSTABLE \+TRUE *)' CMakeLists.txt)" ]
-then # Build is marked UNSTABLE inside CMakeLists.txt
+if [ "$(cmake -P config.cmake | grep -P 'MSCORE_UNSTABLE\s+TRUE')" ]
+then # Build is marked UNSTABLE
   if [ "${BINTRAY_REPO_OWNER}" == "musescore" ]
   then # This is a nightly build
     makefile_overrides="PREFIX='MuseScoreNightly-$date-$branch-$revision' \
@@ -68,7 +68,7 @@ then # Build is marked UNSTABLE inside CMakeLists.txt
   fi
 else
   # Build is STABLE so create a stable release!
-  makefile_overrides="" # use Makefile defaults
+  makefile_overrides="TELEMETRY_TRACK_ID=${TELEMETRY_TRACK_ID}" # use Makefile defaults for other parameters
   update_info="gh-releases-zsync|musescore|MuseScore|latest|MuseScore-*x86_64.AppImage.zsync"
 fi
 

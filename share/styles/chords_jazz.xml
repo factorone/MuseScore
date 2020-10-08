@@ -146,7 +146,7 @@
 
     </font>
 
-  <font class="modifer" family="MuseJazz Text">
+  <font class="modifier" family="MuseJazz Text">
     <mag>0.75</mag>
 
     <sym value="(" name="s("/>
@@ -455,6 +455,7 @@
     </token>
 
   <renderRoot>:n :a </renderRoot>
+  <renderFunction>:a :n</renderFunction>
   <renderBase>/ m:0:1 :n :a m:0:-1</renderBase>
 
 <!--

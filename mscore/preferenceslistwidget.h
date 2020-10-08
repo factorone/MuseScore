@@ -26,146 +26,236 @@
 #define PREF_VALUE_COLUMN 1
 
 namespace Ms {
-
 //---------------------------------------------------------
 //   PreferenceItem
 //---------------------------------------------------------
-class PreferenceItem : public QTreeWidgetItem, public QObject {
 
-      QString _name;
+class PreferenceItem : public QObject, public QTreeWidgetItem
+{
+    Q_OBJECT
 
-    protected:
-      void save(QVariant value);
+    QString _name;
 
-    public:
-      PreferenceItem();
-      PreferenceItem(QString name);
+protected:
+    void apply(QVariant value);
 
-      virtual void save() = 0;
-      virtual void update() = 0;
-      virtual void setDefaultValue() = 0;
-      virtual QWidget* editor() const = 0;
-      virtual bool isModified() const = 0;
+public:
 
-      QString name() const {return _name;}
+    PreferenceItem(QString name);
+    virtual void apply() = 0;
+    virtual void update(bool setup = false) = 0;
+    virtual void setDefaultValue() = 0;
+    virtual QWidget* editor() const = 0;
+    virtual bool isModified() const = 0;
+    virtual void setInitialValueToEditor() = 0;
 
-      };
+    QString name() const { return _name; }
+
+signals:
+    void editorValueModified();
+};
 
 //---------------------------------------------------------
 //   BoolPreferenceItem
 //---------------------------------------------------------
-class BoolPreferenceItem : public PreferenceItem {
-   private:
-      bool _initialValue;
-      QCheckBox* _editor;
 
-   public:
-      BoolPreferenceItem(QString name);
+class BoolPreferenceItem : public PreferenceItem
+{
+private:
+    bool _initialValue;
+    QCheckBox* _editorCheckBox                { nullptr };
+    QGroupBox* _editorGroupBox                { nullptr };
+    QRadioButton* _editorRadioButton          { nullptr };
+    std::function<void()> _applyFunction      { nullptr };
+    std::function<void()> _updateFunction     { nullptr };
 
-      void save();
-      void update();
-      void setDefaultValue();
-      QWidget* editor() const {return _editor;}
-      bool isModified() const;
+public:
+    BoolPreferenceItem(QString name, std::function<void()> applyFunc = nullptr,std::function<void()> updateFunc = nullptr);
+    BoolPreferenceItem(QString name, QCheckBox* editor, std::function<void()> applyFunc = nullptr,
+                       std::function<void()> updateFunc = nullptr);
+    BoolPreferenceItem(QString name, QGroupBox* editor, std::function<void()> applyFunc = nullptr,
+                       std::function<void()> updateFunc = nullptr);
+    BoolPreferenceItem(QString name, QRadioButton* editor, std::function<void()> applyFunc = nullptr,
+                       std::function<void()> updateFunc = nullptr);
 
-      };
-
+    void apply() override;
+    void update(bool setup = false) override;
+    void setDefaultValue() override;
+    QWidget* editor() const override;
+    bool isModified() const override;
+    void setInitialValueToEditor() override;
+};
 
 //---------------------------------------------------------
 //   IntPreferenceItem
 //---------------------------------------------------------
-class IntPreferenceItem : public PreferenceItem {
-      int _initialValue;
-      QSpinBox* _editor;
 
-   public:
-      IntPreferenceItem(QString name);
+class IntPreferenceItem : public PreferenceItem
+{
+    int _initialValue;
+    int _initialEditorIndex                   { -1 };
+    QSpinBox* _editorSpinBox                  { nullptr };
+    QComboBox* _editorComboBox                { nullptr };
+    std::function<void()> _applyFunction      { nullptr };
+    std::function<void()> _updateFunction     { nullptr };
 
-      void save();
-      void update();
-      void setDefaultValue();
-      QWidget* editor() const {return _editor;}
-      bool isModified() const;
-      };
+public:
+    IntPreferenceItem(QString name, std::function<void()> applyFunc = nullptr,std::function<void()> updateFunc = nullptr);
+    IntPreferenceItem(QString name, QSpinBox* editor, std::function<void()> applyFunc = nullptr,std::function<void()> updateFunc = nullptr);
+    IntPreferenceItem(QString name, QComboBox* editor, std::function<void()> applyFunc = nullptr,
+                      std::function<void()> updateFunc = nullptr);
+
+    void apply() override;
+    void update(bool setup = false) override;
+    void setDefaultValue() override;
+    QWidget* editor() const override;
+    bool isModified() const override;
+    void setInitialValueToEditor() override;
+};
 
 //---------------------------------------------------------
 //   DoublePreferenceItem
 //---------------------------------------------------------
-class DoublePreferenceItem : public PreferenceItem {
-      double _initialValue;
-      QDoubleSpinBox* _editor;
 
-   public:
-      DoublePreferenceItem(QString name);
+class DoublePreferenceItem : public PreferenceItem
+{
+    double _initialValue                      { 0 };
+    int _initialEditorIndex                   { -1 };
+    QDoubleSpinBox* _editorDoubleSpinBox      { nullptr };
+    QComboBox* _editorComboBox                { nullptr };
+    QSpinBox* _editorSpinBox                  { nullptr };
+    std::function<void()> _applyFunction      { nullptr };
+    std::function<void()> _updateFunction     { nullptr };
 
-      void save();
-      void update();
-      void setDefaultValue();
-      QWidget* editor() const {return _editor;}
-      bool isModified() const;
-      };
+public:
+    DoublePreferenceItem(QString name, std::function<void()> applyFunc = nullptr,std::function<void()> updateFunc = nullptr);
+    DoublePreferenceItem(QString name, QDoubleSpinBox* editor, std::function<void()> applyFunc = nullptr,
+                         std::function<void()> updateFunc = nullptr);
+    DoublePreferenceItem(QString name, QComboBox* editor, std::function<void()> applyFunc = nullptr,
+                         std::function<void()> updateFunc = nullptr);
+    DoublePreferenceItem(QString name, QSpinBox* editor, std::function<void()> applyFunc = nullptr,
+                         std::function<void()> updateFunc = nullptr);
+
+    void apply() override;
+    void update(bool setup = false) override;
+    void setDefaultValue() override;
+    QWidget* editor() const override;
+    bool isModified() const override;
+    void setInitialValueToEditor() override;
+};
 
 //---------------------------------------------------------
 //   StringPreferenceItem
 //---------------------------------------------------------
-class StringPreferenceItem : public PreferenceItem {
-      QString _initialValue;
-      QLineEdit* _editor;
 
-   public:
-      StringPreferenceItem(QString name);
+class StringPreferenceItem : public PreferenceItem
+{
+    QString _initialValue                     { "" };
+    int _initialEditorIndex                   { -1 };
+    bool _initialIsChecked                    { false };
+    QLineEdit* _editorLineEdit                { nullptr };
+    QFontComboBox* _editorFontComboBox        { nullptr };
+    QComboBox* _editorComboBox                { nullptr };
+    QRadioButton* _editorRadioButton          { nullptr };
+    std::function<void()> _applyFunction      { nullptr };
+    std::function<void()> _updateFunction     { nullptr };
 
-      void save();
-      void update();
-      void setDefaultValue();
-      QWidget* editor() const {return _editor;}
-      bool isModified() const;
-      };
+public:
+    StringPreferenceItem(QString name, std::function<void()> applyFunc = nullptr,std::function<void()> updateFunc = nullptr);
+    StringPreferenceItem(QString name, QLineEdit* editor, std::function<void()> applyFunc = nullptr,
+                         std::function<void()> updateFunc = nullptr);
+    StringPreferenceItem(QString name, QFontComboBox* editor, std::function<void()> applyFunc = nullptr,
+                         std::function<void()> updateFunc = nullptr);
+    StringPreferenceItem(QString name, QComboBox* editor, std::function<void()> applyFunc = nullptr,
+                         std::function<void()> updateFunc = nullptr);
+    StringPreferenceItem(QString name, QRadioButton* editor, std::function<void()> applyFunc = nullptr,
+                         std::function<void()> updateFunc = nullptr); // remove nullptr default since you cannot not have an apply and update func
+
+    void apply() override;
+    void update(bool setup = false) override;
+    void setDefaultValue() override;
+    QWidget* editor() const override;
+    bool isModified() const override;
+    void setInitialValueToEditor() override;
+};
 
 //---------------------------------------------------------
 //   ColorPreferenceItem
 //---------------------------------------------------------
-class ColorPreferenceItem : public PreferenceItem {
-      QColor _initialValue;
-      Awl::ColorLabel* _editor;
+class ColorPreferenceItem : public PreferenceItem
+{
+    QColor _initialValue;
+    Awl::ColorLabel* _editorColorLabel        { nullptr };
+    std::function<void()> _applyFunction      { nullptr };
+    std::function<void()> _updateFunction     { nullptr };
 
-   public:
-      ColorPreferenceItem(QString name);
+public:
+    ColorPreferenceItem(QString name, std::function<void()> applyFunc = nullptr,std::function<void()> updateFunc = nullptr);
+    ColorPreferenceItem(QString name, Awl::ColorLabel* editor,std::function<void()> applyFunc = nullptr,
+                        std::function<void()> updateFunc = nullptr);
 
-      void save();
-      void update();
-      void setDefaultValue();
-      QWidget* editor() const {return _editor;}
-      bool isModified() const;
-      };
+    void apply() override;
+    void update(bool setup = false) override;
+    void setDefaultValue() override;
+    QWidget* editor() const override;
+    bool isModified() const override;
+    void setInitialValueToEditor() override;
+};
 
+//---------------------------------------------------------
+//   CustomPreferenceItem
+//---------------------------------------------------------
+
+class CustomPreferenceItem : public PreferenceItem
+{
+    int _initialEditorIndex                   { -1 };
+    bool _initialIsChecked                    { false };
+    QRadioButton* _editorRadioButton          { nullptr };
+    QComboBox* _editorComboBox                { nullptr };
+    std::function<void()> _applyFunction      { nullptr };
+    std::function<void()> _updateFunction     { nullptr };
+
+public:
+    CustomPreferenceItem(QString name, QRadioButton* editor, std::function<void()> applyFunc = nullptr,
+                         std::function<void()> updateFunc = nullptr);
+    CustomPreferenceItem(QString name, QComboBox* editor, std::function<void()> applyFunc = nullptr,
+                         std::function<void()> updateFunc = nullptr);
+
+    void apply() override;
+    void update(bool setup = false) override;
+    void setDefaultValue() override;
+    QWidget* editor() const override;
+    bool isModified() const override;
+    void setInitialValueToEditor() override;
+};
 
 //---------------------------------------------------------
 //   PreferencesListWidget
 //---------------------------------------------------------
 
-class PreferencesListWidget : public QTreeWidget, public PreferenceVisitor {
-      Q_OBJECT
+class PreferencesListWidget : public QTreeWidget, public PreferenceVisitor
+{
+    Q_OBJECT
 
-      QHash<QString, PreferenceItem*> preferenceItems;
+    QHash<QString, PreferenceItem*> _preferenceItems;
 
-      void addPreference(PreferenceItem* item);
+    void addPreference(PreferenceItem* item);
 
-   public:
-      explicit PreferencesListWidget(QWidget* parent = 0);
-      void loadPreferences();
-      void updatePreferences();
+public:
+    explicit PreferencesListWidget(QWidget* parent = 0);
+    void loadPreferences();
+    void updatePreferences();
 
-      std::vector<QString> save();
+    std::vector<QString> save();
 
-      void visit(QString key, IntPreference*);
-      void visit(QString key, DoublePreference*);
-      void visit(QString key, BoolPreference*);
-      void visit(QString key, StringPreference*);
-      void visit(QString key, ColorPreference*);
+    void visit(QString key, IntPreference*);
+    void visit(QString key, DoublePreference*);
+    void visit(QString key, BoolPreference*);
+    void visit(QString key, StringPreference*);
+    void visit(QString key, ColorPreference*);
 
+    QHash<QString, PreferenceItem*> preferenceItems() const { return _preferenceItems; }
 };
-
 } // namespace Ms
 
 #endif // __PREFERENCESLISTWIDGET_H__

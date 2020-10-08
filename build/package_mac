@@ -10,8 +10,10 @@ then
     VERSION=$1
 else
     LONG_NAME=MuseScore
-    LONGER_NAME="MuseScore 3"
-    VERSION=3.4.0
+    LONGER_NAME="MuseScore 4"
+
+    SCRIPT_DIR=$(cd "$(dirname ${BASH_SOURCE[0]})" && pwd)
+    VERSION=$(cmake -P "$SCRIPT_DIR/../config.cmake" | sed -n -e "s/^.*VERSION  *//p")
 fi
 
 
@@ -99,7 +101,7 @@ function change_rpath_QWebEngine() {
 rm ${WORKING_DIRECTORY}/${COMPRESSEDDMGNAME}
 
 #tip: increase the size if error on copy or macdeployqt
-hdiutil create -size 500m -fs HFS+ -volname ${VOLNAME} ${WORKING_DIRECTORY}/${DMGNAME}
+hdiutil create -size 750m -fs HFS+ -volname ${VOLNAME} ${WORKING_DIRECTORY}/${DMGNAME}
 
 # Mount the disk image
 hdiutil attach ${WORKING_DIRECTORY}/${DMGNAME}
@@ -186,18 +188,29 @@ mkdir -p ${VOLUME}/Pictures
 cp  ${BACKGROUND} ${VOLUME}/Pictures/background.tiff
 
 echo "symlink application"
-# nssymlink applicatio
+# nssymlink application
 ln -s /Applications/ ${VOLUME}/Applications
 set_bundle_display_options ${VOLUME}
 mv ${VOLUME}/Pictures ${VOLUME}/.Pictures
 
+# Most nested locations should go first
+CODE_PATHS=(
+    "${VOLUME}/${LONGER_NAME}.app/Contents/Frameworks/Sparkle.framework/Versions/A/Resources/Autoupdate.app"
+    "${VOLUME}/${LONGER_NAME}.app"
+)
+
 #codesign
 echo "Codesign"
-codesign --deep -s "Developer ID Application: MuseScore" "${VOLUME}/${LONGER_NAME}.app"
+# `codesign --deep` doesn't seem to search for code in Contents/Resources directory so sign libraries in it manually
+find "${VOLUME}/${LONGER_NAME}.app/Contents/Resources" -name '*.dylib' -exec codesign --options runtime --deep -s "Developer ID Application: MuseScore" '{}' ';'
+# Sign code in other (more conventional) locations
+codesign --options runtime --deep -s "Developer ID Application: MuseScore" "${CODE_PATHS[@]}"
+# Sign QtWebEngine application for MacOS Catalina
+codesign --force --verify --verbose --options runtime --entitlements "${WORKING_DIRECTORY}/../build/qtwebengineprocess.entitlements" --deep --sign "Developer ID Application: MuseScore" "${VOLUME}/${LONGER_NAME}.app/Contents/Frameworks/QtWebEngineCore.framework/Helpers/QtWebEngineProcess.app/Contents/MacOS/QtWebEngineProcess"
 echo "spctl"
 spctl --assess --type execute "${VOLUME}/${LONGER_NAME}.app"
 echo "Codesign verify"
-codesign --verify --deep --strict --verbose=2 "${VOLUME}/${LONGER_NAME}.app"
+codesign --verify --deep --strict --verbose=2 "${CODE_PATHS[@]}"
 
 echo "Unmount"
 # Unmount the disk image

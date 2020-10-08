@@ -19,46 +19,56 @@
 #include "style.h"
 
 namespace Ms {
-
 //---------------------------------------------------------
 //   @@ Bend
 //---------------------------------------------------------
 
-class Bend final : public Element {
-      M_PROPERTY(QString,   fontFace,  setFontFace)
-      M_PROPERTY(qreal,     fontSize,  setFontSize)
-      M_PROPERTY(FontStyle, fontStyle, setFontStyle)
-      M_PROPERTY(qreal,     lineWidth, setLineWidth)
+enum class BendType {
+    BEND = 0,
+    BEND_RELEASE,
+    BEND_RELEASE_BEND,
+    PREBEND,
+    PREBEND_RELEASE,
+    CUSTOM
+};
 
-      bool _playBend     { true };
-      QList<PitchValue> _points;
+class Bend final : public Element
+{
+    M_PROPERTY(QString,   fontFace,  setFontFace)
+    M_PROPERTY(qreal,     fontSize,  setFontSize)
+    M_PROPERTY(FontStyle, fontStyle, setFontStyle)
+    M_PROPERTY(qreal,     lineWidth, setLineWidth)
 
-      QPointF notePos;
-      qreal noteWidth;
+public:
+    Bend(Score* s);
 
-      QFont font(qreal) const;
+    Bend* clone() const override { return new Bend(*this); }
+    ElementType type() const override { return ElementType::BEND; }
+    void layout() override;
+    void draw(QPainter*) const override;
+    void write(XmlWriter&) const override;
+    void read(XmlReader& e) override;
+    QList<PitchValue>& points() { return m_points; }
+    const QList<PitchValue>& points() const { return m_points; }
+    void setPoints(const QList<PitchValue>& p) { m_points = p; }
+    bool playBend() const { return m_playBend; }
+    void setPlayBend(bool v) { m_playBend = v; }
 
-   public:
-      Bend(Score* s);
-      virtual Bend* clone() const override        { return new Bend(*this); }
-      virtual ElementType type() const override   { return ElementType::BEND; }
-      virtual void layout() override;
-      virtual void draw(QPainter*) const override;
-      virtual void write(XmlWriter&) const override;
-      virtual void read(XmlReader& e) override;
-      QList<PitchValue>& points()                { return _points; }
-      const QList<PitchValue>& points() const    { return _points; }
-      void setPoints(const QList<PitchValue>& p) { _points = p;    }
-      bool playBend() const                      { return _playBend; }
-      void setPlayBend(bool v)                   { _playBend = v;    }
+    // property methods
+    QVariant getProperty(Pid propertyId) const override;
+    bool setProperty(Pid propertyId, const QVariant&) override;
+    QVariant propertyDefault(Pid) const override;
 
-      // property methods
-      virtual QVariant getProperty(Pid propertyId) const override;
-      virtual bool setProperty(Pid propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(Pid) const override;
-      };
+private:
+    QFont font(qreal) const;
+    BendType parseBendTypeFromCurve() const;
+    void updatePointsByBendType(const BendType bendType);
 
+    bool m_playBend = true;
+    QList<PitchValue> m_points;
 
+    QPointF m_notePos;
+    qreal m_noteWidth;
+};
 }     // namespace Ms
 #endif
-

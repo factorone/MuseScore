@@ -29,7 +29,7 @@
           <name>stdNormal</name>
           </StaffType>
         </Staff>
-      <trackName>S-Gt</trackName>
+      <trackName>Track 1</trackName>
       <Instrument>
         <longName>Guitar</longName>
         <shortName>Guit.</shortName>
@@ -330,7 +330,7 @@
               <tempo>2</tempo>
               <linked>
                 </linked>
-              <text><sym>metNoteQuarterUp</sym> = 120</text>
+              <text><b></b><font face="ScoreText"/><b><font face="FreeSerif"/> = 120</b></text>
               </Tempo>
             <Chord>
               <linked>
@@ -457,7 +457,7 @@
             </voice>
           </Measure>
         </Staff>
-      <name>S-Gt</name>
+      <name>Track 1</name>
       </Score>
     </Score>
   </museScore>

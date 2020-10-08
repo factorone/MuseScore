@@ -17,51 +17,51 @@
 #include "instrument.h"
 
 namespace Ms {
-
 enum class StaffStateType : char {
-      INSTRUMENT,
-      TYPE,
-      VISIBLE,
-      INVISIBLE
-      };
+    INSTRUMENT,
+    TYPE,
+    VISIBLE,
+    INVISIBLE
+};
 
 //---------------------------------------------------------
 //   @@ StaffState
 //---------------------------------------------------------
 
-class StaffState final : public Element {
-      StaffStateType _staffStateType;
-      qreal lw;
-      QPainterPath path;
+class StaffState final : public Element
+{
+    StaffStateType _staffStateType { StaffStateType::INVISIBLE };
+    qreal lw { 0.0 };
+    QPainterPath path;
 
-      Instrument* _instrument;
+    Instrument* _instrument { nullptr };
 
-      virtual void draw(QPainter*) const;
-      virtual void layout();
+    void draw(QPainter*) const override;
+    void layout() override;
 
-   public:
-      StaffState(Score*);
-      StaffState(const StaffState&);
-      ~StaffState();
+public:
+    StaffState(Score*);
+    StaffState(const StaffState&);
+    ~StaffState();
 
-      virtual StaffState* clone() const  { return new StaffState(*this); }
-      virtual ElementType type() const   { return ElementType::STAFF_STATE; }
+    StaffState* clone() const override { return new StaffState(*this); }
+    ElementType type() const override { return ElementType::STAFF_STATE; }
 
-      void setStaffStateType(const QString&);
-      void setStaffStateType(StaffStateType st) { _staffStateType = st; }
-      StaffStateType staffStateType() const     { return _staffStateType; }
-      QString staffStateTypeName() const;
+    void setStaffStateType(const QString&);
+    void setStaffStateType(StaffStateType st) { _staffStateType = st; }
+    StaffStateType staffStateType() const { return _staffStateType; }
+    QString staffStateTypeName() const;
 
-      virtual bool acceptDrop(EditData&) const override;
-      virtual Element* drop(EditData&);
-      virtual void write(XmlWriter&) const;
-      virtual void read(XmlReader&);
-      Instrument* instrument() const           { return _instrument; }
-      void setInstrument(const Instrument* i)  { *_instrument = *i;    }
-      void setInstrument(const Instrument&& i) { *_instrument = i;    }
-      Segment* segment()                       { return (Segment*)parent(); }
-      };
+    bool acceptDrop(EditData&) const override;
+    Element* drop(EditData&) override;
 
+    void write(XmlWriter&) const override;
+    void read(XmlReader&) override;
 
+    Instrument* instrument() const { return _instrument; }
+    void setInstrument(const Instrument* i) { *_instrument = *i; }
+    void setInstrument(const Instrument&& i) { *_instrument = i; }
+    Segment* segment() { return (Segment*)parent(); }
+};
 }     // namespace Ms
 #endif

@@ -14,10 +14,9 @@
 #define __PITCHVALUE_H__
 
 namespace Ms {
-
 //---------------------------------------------------------
 //   PitchValue
-//    used in class Bend, BendCanvas
+//    used in class Bend, SquareCanvas
 //
 //    - time is 0 - 60 for 0-100% of the chord duration the
 //      bend is attached to
@@ -25,17 +24,20 @@ namespace Ms {
 //---------------------------------------------------------
 
 struct PitchValue {
-      int time;
-      int pitch;
-      bool vibrato;
-      PitchValue() {}
-      PitchValue(int a, int b, bool c = false) : time(a), pitch(b), vibrato(c) {}
-      inline bool operator==(const PitchValue& pv) const {
-            return (pv.time == time && pv.pitch == pitch && pv.vibrato == vibrato);
-            }
-      };
-
-
+    int time;
+    int pitch;
+    bool vibrato;
+    PitchValue() {}
+    PitchValue(int a, int b, bool c = false)
+        : time(a), pitch(b), vibrato(c) {}
+    inline bool operator==(const PitchValue& pv) const
+    {
+        return pv.time == time && pv.pitch == pitch && pv.vibrato == vibrato;
+    }
+};
 }     // namespace Ms
-#endif
 
+Q_DECLARE_METATYPE(Ms::PitchValue)
+Q_DECLARE_METATYPE(QList<Ms::PitchValue>)
+
+#endif

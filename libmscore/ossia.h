@@ -16,21 +16,19 @@
 #include "element.h"
 
 namespace Ms {
-
 //---------------------------------------------------------
 //   @@ Ossia
 ///    not implemented yet
 //---------------------------------------------------------
 
-class Ossia final : public Element {
-   public:
-      Ossia(Score*);
-      Ossia(const Ossia&);
-      virtual Ossia* clone() const override     { return new Ossia(*this); }
-      virtual ElementType type() const override { return ElementType::OSSIA; }
-      };
+class Ossia final : public Element
+{
+public:
+    Ossia(Score*);
+    Ossia(const Ossia&);
 
-
+    Ossia* clone() const override { return new Ossia(*this); }
+    ElementType type() const override { return ElementType::OSSIA; }
+};
 }     // namespace Ms
 #endif
-

@@ -22,8 +22,10 @@
 
 #include "qmldockwidget.h"
 
-namespace Ms {
+#include "modularity/ioc.h"
+#include "mu4/palette/ipaletteadapter.h"
 
+namespace Ms {
 class PaletteWorkspace;
 class QmlNativeToolTip;
 
@@ -32,81 +34,82 @@ class QmlNativeToolTip;
 //---------------------------------------------------------
 
 class PaletteQmlInterface : public QObject
-      {
-      Q_OBJECT
+{
+    Q_OBJECT
 
-      Q_PROPERTY(bool palettesEnabled READ palettesEnabled NOTIFY palettesEnabledChanged)
-      Q_PROPERTY(Ms::PaletteWorkspace* paletteWorkspace READ paletteWorkspace WRITE setPaletteWorkspace NOTIFY paletteWorkspaceChanged)
-      Q_PROPERTY(Ms::QmlNativeToolTip* tooltip READ getTooltip)
-      Q_PROPERTY(QColor paletteBackground READ paletteBackground NOTIFY paletteBackgroundChanged)
+    Q_PROPERTY(bool palettesEnabled READ palettesEnabled NOTIFY palettesEnabledChanged)
+    Q_PROPERTY(
+        Ms::PaletteWorkspace* paletteWorkspace READ paletteWorkspace WRITE setPaletteWorkspace NOTIFY paletteWorkspaceChanged)
+    Q_PROPERTY(Ms::QmlNativeToolTip* tooltip READ getTooltip)
+    Q_PROPERTY(QColor paletteBackground READ paletteBackground NOTIFY paletteBackgroundChanged)
 
-      PaletteWorkspace* w;
-      QmlNativeToolTip* tooltip;
-      QColor _paletteBackground;
-      bool _palettesEnabled;
+    PaletteWorkspace* w;
+    QmlNativeToolTip* tooltip;
+    QColor _paletteBackground;
+    bool _palettesEnabled;
 
-      QmlNativeToolTip* getTooltip() { return tooltip; }
+    QmlNativeToolTip* getTooltip() { return tooltip; }
 
-   signals:
-      void palettesEnabledChanged();
-      void paletteWorkspaceChanged();
-      void paletteBackgroundChanged();
-      void paletteSearchRequested();
-      void elementDraggedToScoreView();
+signals:
+    void palettesEnabledChanged();
+    void paletteWorkspaceChanged();
+    void paletteBackgroundChanged();
+    void paletteSearchRequested();
+    void elementDraggedToScoreView();
 
-   public:
-      PaletteQmlInterface(PaletteWorkspace* workspace, QmlNativeToolTip* t, bool enabled, QObject* parent = nullptr);
+public:
+    PaletteQmlInterface(PaletteWorkspace* workspace, QmlNativeToolTip* t, bool enabled, QObject* parent = nullptr);
 
-      PaletteWorkspace* paletteWorkspace() { return w; }
-      const PaletteWorkspace* paletteWorkspace() const { return w; }
-      void setPaletteWorkspace(PaletteWorkspace* workspace) { w = workspace; emit paletteWorkspaceChanged(); }
+    PaletteWorkspace* paletteWorkspace() { return w; }
+    const PaletteWorkspace* paletteWorkspace() const { return w; }
+    void setPaletteWorkspace(PaletteWorkspace* workspace) { w = workspace; emit paletteWorkspaceChanged(); }
 
-      QColor paletteBackground() const { return _paletteBackground; }
-      void setPaletteBackground(const QColor& val);
+    QColor paletteBackground() const { return _paletteBackground; }
+    void setPaletteBackground(const QColor& val);
 
-      bool palettesEnabled() const { return _palettesEnabled; }
-      void setPalettesEnabled(bool val);
+    bool palettesEnabled() const { return _palettesEnabled; }
+    void setPalettesEnabled(bool val);
 
-      void notifyElementDraggedToScoreView() { emit elementDraggedToScoreView(); }
+    void notifyElementDraggedToScoreView() { emit elementDraggedToScoreView(); }
 
-      void requestPaletteSearch() { emit paletteSearchRequested(); }
+    void requestPaletteSearch() { emit paletteSearchRequested(); }
 
-      Q_INVOKABLE Qt::KeyboardModifiers keyboardModifiers() const { return QGuiApplication::keyboardModifiers(); }
-      };
+    Q_INVOKABLE Qt::KeyboardModifiers keyboardModifiers() const { return QGuiApplication::keyboardModifiers(); }
+};
 
 //---------------------------------------------------------
 //   PaletteWidget
 //---------------------------------------------------------
 
 class PaletteWidget : public QmlDockWidget
-      {
-      Q_OBJECT
+{
+    Q_OBJECT
 
-      QAction* singlePaletteAction = nullptr;
-      PaletteQmlInterface* qmlInterface;
+    INJECT(palette, mu::palette::IPaletteAdapter, adapter)
 
-      bool wasShown = false;
+    QAction* singlePaletteAction = nullptr;
+    PaletteQmlInterface* qmlInterface;
 
-      static void registerQmlTypes();
+    bool wasShown = false;
 
-      void retranslate();
-      void setupStyle();
+    static void registerQmlTypes();
 
-   public slots:
-      void setSinglePalette(bool);
+    void retranslate();
+    void setupStyle();
 
-   public:
-      PaletteWidget(PaletteWorkspace* w, QWidget* parent = nullptr, Qt::WindowFlags flags = Qt::WindowFlags());
-      PaletteWidget(PaletteWorkspace* w, QQmlEngine* e, QWidget* parent, Qt::WindowFlags flags = Qt::WindowFlags());
+public slots:
+    void setSinglePalette(bool);
 
-      void activateSearchBox();
-      void applyCurrentPaletteElement();
-      void notifyElementDraggedToScoreView();
+public:
+    PaletteWidget(PaletteWorkspace* w, QWidget* parent = nullptr, Qt::WindowFlags flags = Qt::WindowFlags());
+    PaletteWidget(PaletteWorkspace* w, QQmlEngine* e, QWidget* parent, Qt::WindowFlags flags = Qt::WindowFlags());
 
-      void showEvent(QShowEvent* event) override;
-      void changeEvent(QEvent* evt) override;
-      };
+    void activateSearchBox();
+    void applyCurrentPaletteElement();
+    void notifyElementDraggedToScoreView();
 
+    void showEvent(QShowEvent* event) override;
+    void changeEvent(QEvent* evt) override;
+};
 }
 #endif
-

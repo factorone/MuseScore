@@ -24,11 +24,8 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.3.0)
 
 include(build/functions.cmake) # library of CMake functions ("fn__" namespace)
 
-set (CI $ENV{CI})
-if (CI)
-    SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
-    SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
-endif (CI)
+# Print Qt version or fail the build if Qt (qmake) is not in PATH.
+fn__require_program(QMAKE Qt --version "https://musescore.org/en/handbook/developers-handbook/compilation" qmake)
 
 # Libraries linked via full path no longer produce linker search paths.
 cmake_policy(SET CMP0003 NEW)
@@ -62,8 +59,14 @@ if (MSVC)
    set (MINGW false)
 endif (MSVC)
 
+option(BUILD_UI_MU4 "Build Modern UI MuseScore 4" OFF)
+
 # We need this early, before FindQt5
 option(BUILD_WEBENGINE "Built in webengine support" ON)
+
+if (BUILD_UI_MU4)
+    set(BUILD_WEBENGINE OFF)
+endif(BUILD_UI_MU4)
 
 if (BUILD_WEBENGINE)
    if (MINGW)
@@ -94,11 +97,18 @@ include (CreatePrecompiledHeader)
 # set(CMAKE_VERBOSE_MAKEFILE ON)
 
 set(CMAKE_AUTOMOC     TRUE)
-set(MSCORE_UNSTABLE   TRUE)          # Mark as unstable
-set(MSCORE_RELEASE_CHANNEL "devel")
-#set(MSCORE_RELEASE_CHANNEL "testing")
-#set(MSCORE_RELEASE_CHANNEL "stable")
 set(USE_SSE           TRUE)
+
+# Setup version number and general build settings
+include("${CMAKE_CURRENT_LIST_DIR}/config.cmake")
+
+if (MUSESCORE_LABEL)
+  SET (MUSESCORE_NAME_VERSION "${MUSESCORE_NAME_VERSION} ${MUSESCORE_LABEL}")
+endif (MUSESCORE_LABEL)
+
+if (MSCORE_UNSTABLE)
+  SET (MUSESCORE_NAME_VERSION "${MUSESCORE_NAME_VERSION} (${MUSESCORE_VERSION_FULL} unstable)")
+endif (MSCORE_UNSTABLE)
 
 # Disable components not supported on Windows
 if (MSVC OR MINGW)
@@ -123,15 +133,16 @@ endif (NOT APPLE AND NOT MINGW AND NOT MSVC)
 option(AEOLUS        "Enable pipe organ synthesizer"      OFF)
 option(ZERBERUS      "Enable experimental SFZ sampler"    ON)
 option(OSC           "Enable OSC remote control protocol" ON)
-option(OMR           "Enable PDF import"  OFF)                 # OMR - optical music recognition
+option(AVSOMR        "Enable AVSOMR import"               OFF) # AVSOMR - optical music recognition by audirevis
+option(OMR           "Enable PDF import"                  OFF) # OMR - optical music recognition
 # For installation see: http://ubuntuforums.org/showthread.php?t=1647350
-option(OCR           "Enable OCR, requires OMR" OFF)           # Requires tesseract 3.0, needs work on mac/win
-option(SOUNDFONT3    "Ogg Vorbis compressed fonts" ON)         # Enable Ogg Vorbis compressed fonts, requires Ogg & Vorbis
-option(HAS_AUDIOFILE "Enable audio export" ON)                 # Requires libsndfile
+option(OCR           "Enable OCR, requires OMR"           OFF) # Requires tesseract 3.0, needs work on mac/win
+option(SOUNDFONT3    "Ogg Vorbis compressed fonts"        ON)  # Enable Ogg Vorbis compressed fonts, requires Ogg & Vorbis
+option(HAS_AUDIOFILE "Enable audio export"                ON)  # Requires libsndfile
 option(USE_SYSTEM_QTSINGLEAPPLICATION "Use system QtSingleApplication" OFF)
-option(USE_SYSTEM_FREETYPE "Use system FreeType" OFF)          # requires freetype >= 2.5.2, does not work on win
-option(USE_SYSTEM_POPPLER  "Use system Poppler for OMR" OFF)
-option(BUILD_LAME    "Enable MP3 export" ON)                   # Requires libmp3lame, call CMake with -DBUILD_LAME="OFF" to disable
+option(USE_SYSTEM_FREETYPE "Use system FreeType"          OFF) # requires freetype >= 2.5.2, does not work on win
+option(USE_SYSTEM_POPPLER  "Use system Poppler for OMR"   OFF)
+option(BUILD_LAME    "Enable MP3 export"                  ON)  # Requires libmp3lame, call CMake with -DBUILD_LAME="OFF" to disable
 option(DOWNLOAD_SOUNDFONT "Download the latest soundfont version as part of the build process" ON)
 
 # licence incompatibility, must never be distributed
@@ -151,6 +162,33 @@ option(BUILD_64 "Build 64 bit version of editor" ON)
 option(BUILD_AUTOUPDATE "Build with autoupdate support" OFF)
 option(BUILD_CRASH_REPORTER "Build with crash reporter" OFF)
 set(CRASH_REPORT_URL "http://127.0.0.1:1127/post" CACHE STRING "URL where to send crash reports (valid if BUILD_CRASH_REPORTER is set to ON)")
+option(BUILD_TELEMETRY_MODULE "Build with telemetry module" ON)
+set(TELEMETRY_TRACK_ID "" CACHE STRING "Telemetry track id")
+option(BUILD_UI_MU4_WITH_MU3 "Build Modern UI MuseScore 4 and MU3 source code" OFF)
+option(BUILD_UNIT_TESTS "Build gtest unit test" OFF)
+option(QML_LOAD_FROM_SOURCE "Load qml files from source (not resource)" OFF)
+
+SET(VST3_SDK_VERSION "3.7")
+option(BUILD_VST "Build VST MODULE" OFF)
+set(VST3_SDK_PATH "" CACHE PATH "Path to VST3_SDK. SDK version >= ${VST3_SDK_VERSION} required")
+
+add_definitions(-DQT_QML_DEBUG)
+add_definitions(-D_USE_MATH_DEFINES)
+
+message("[cmake] BUILD_UI_MU4: ${BUILD_UI_MU4}")
+
+if (MSCORE_UNSTABLE OR TELEMETRY_TRACK_ID STREQUAL "")
+      message("Telemetry feature is disabled")
+      message("Build is unstable = ${MSCORE_UNSTABLE}")
+
+      if (TELEMETRY_TRACK_ID STREQUAL "")
+            message("Telemetry track id is empty")
+      else(TELEMETRY_TRACK_ID STREQUAL "")
+            message("Telemetry track id isn't empty")
+      endif(TELEMETRY_TRACK_ID STREQUAL "")
+
+      add_definitions(-DTELEMETRY_DISABLED)
+endif(MSCORE_UNSTABLE OR TELEMETRY_TRACK_ID STREQUAL "")
 
 if (BUILD_CRASH_REPORTER)
       message("Crash reporter enabled")
@@ -206,7 +244,7 @@ if (BUILD_AUTOUPDATE STREQUAL "ON")
                    add_library(winsparkledll SHARED IMPORTED)
                    set_target_properties(winsparkledll PROPERTIES IMPORTED_IMPLIB ${WINSPARKLE_LIBRARY})
                    set(WIN_SPARKLE_ENABLED 1)
-                   set(WIN_SPARKLE_APPCAST_URL "https://sparkle.musescore.org/${MSCORE_RELEASE_CHANNEL}/3/win/appcast${ARCH_TYPE}.xml")
+                   set(WIN_SPARKLE_APPCAST_URL "https://sparkle.musescore.org/${MSCORE_RELEASE_CHANNEL}/4/win/appcast${ARCH_TYPE}.xml")
                    message("Win Sparkle Url: " ${WIN_SPARKLE_APPCAST_URL})
              endif (NOT MSCORE_UNSTABLE)
       else (APPLE)
@@ -231,7 +269,7 @@ if (NOT MSVC)
 endif (NOT MSVC)
 
 if (APPLE)
-   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -stdlib=libc++ -Wno-inconsistent-missing-override -Wno-deprecated-register")
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fPIC -stdlib=libc++ -Wno-inconsistent-missing-override -Wno-deprecated-register")
    # This is necessary for genManual to be executed during the build phase,
    # it needs to be able to get the Qt libs.
    # TODO: is it still needed? genManual is removed.
@@ -242,7 +280,7 @@ else (APPLE)
       if (BUILD_64 STREQUAL "ON")
          set(USE_SSE FALSE)
       endif(BUILD_64 STREQUAL "ON")
-   # Set compiler options for VS2017 toolchain.
+   # Set compiler options for VS2017/19 toolchain.
    # Note: /D_CRT_SECURE_NO WARNINGS disables warnings when using "non-secure" library functions like sscanf...
       set(CMAKE_CXX_FLAGS                "/MP /DWIN32 /D_WINDOWS /GR /EHsc /D_UNICODE /DUNICODE /D_CRT_SECURE_NO_WARNINGS /execution-charset:utf-8 /source-charset:utf-8")
       set(CMAKE_C_FLAGS                  "/MP /DWIN32 /D_WINDOWS /D_CRT_SECURE_NO_WARNINGS")
@@ -251,15 +289,15 @@ else (APPLE)
          set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /arch:SSE")
          set(CMAKE_C_FLAGS    "${CMAKE_C_FLAGS} /arch:SSE")
       endif (USE_SSE)
-      set(CMAKE_CXX_FLAGS_DEBUG          "/MT /permissive- /std:c++14 /W4 /Zi /Ob0 /Od /RTC1")
-      set(CMAKE_CXX_FLAGS_RELEASE        "/MT /permissive- /std:c++14 /W4 /O2 /Ob2 /DNDEBUG /DQT_NO_DEBUG /DQT_NO_DEBUG_OUTPUT")
-      set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/MT /permissive- /std:c++14 /W4 /Zi /O2 /Ob1 /DNDEBUG /DQT_NO_DEBUG /DQT_NO_DEBUG_OUTPUT")
+      set(CMAKE_CXX_FLAGS_DEBUG          "/MT /permissive- /std:c++17 /W4 /Zi /Ob0 /Od /RTC1")
+      set(CMAKE_CXX_FLAGS_RELEASE        "/MT /permissive- /std:c++17 /W4 /O2 /Ob2 /DNDEBUG /DQT_NO_DEBUG /DQT_NO_DEBUG_OUTPUT")
+      set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/MT /permissive- /std:c++17 /W4 /Zi /O2 /Ob1 /DNDEBUG /DQT_NO_DEBUG /DQT_NO_DEBUG_OUTPUT")
       set(CMAKE_C_FLAGS_DEBUG            "/MT /W4 /Zi /Ob0 /Od /RTC1")
       set(CMAKE_C_FLAGS_RELEASE          "/MT /W4 /O2 /Ob2 /DNDEBUG")
       set(CMAKE_C_FLAGS_RELWITHDEBINFO   "/MT /W4 /Zi /O2 /Ob1 /DNDEBUG")
       set(CMAKE_EXE_LINKER_FLAGS         "/DYNAMICBASE:NO")
    else (MSVC)
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
       if (MINGW)
          # -mno-ms-bitfields see #22048
          set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} -mno-ms-bitfields")
@@ -277,27 +315,6 @@ endif(APPLE)
 set(CMAKE_INCLUDE_CURRENT_DIR TRUE)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON) # Call CMake with option -DCMAKE_SKIP_RPATH to not set RPATH (Debian packaging requirement)
 set(CMAKE_SKIP_RULE_DEPENDENCY TRUE)
-
-# The MuseScore version number.
-SET(MUSESCORE_NAME "MuseScore")
-SET(MUSESCORE_VERSION_MAJOR  "3")
-SET(MUSESCORE_VERSION_MINOR  "4")
-SET(MUSESCORE_VERSION_PATCH  "0")
-SET(MUSESCORE_VERSION_LABEL  "")
-SET(MUSESCORE_VERSION       "${MUSESCORE_VERSION_MAJOR}.${MUSESCORE_VERSION_MINOR}")
-SET(MUSESCORE_NAME_VERSION "${MUSESCORE_NAME} ${MUSESCORE_VERSION_MAJOR}")
-#
-# Version schema x.x.x is hardcoded in source
-#
-SET(MUSESCORE_VERSION_FULL  "${MUSESCORE_VERSION}.${MUSESCORE_VERSION_PATCH}")
-
-if (MUSESCORE_LABEL)
-  SET (MUSESCORE_NAME_VERSION "${MUSESCORE_NAME_VERSION} ${MUSESCORE_LABEL}")
-endif (MUSESCORE_LABEL)
-
-if (MSCORE_UNSTABLE)
-  SET (MUSESCORE_NAME_VERSION "${MUSESCORE_NAME_VERSION} (${MUSESCORE_VERSION_FULL} unstable)")
-endif (MSCORE_UNSTABLE)
 
 if (MINGW OR MSVC OR APPLE)
   if(MINGW OR MSVC)
@@ -318,7 +335,7 @@ endif (MINGW OR MSVC OR APPLE)
 if (DOWNLOAD_SOUNDFONT)
   set (SF_VERSION_REMOTE_FILE ${PROJECT_BINARY_DIR}/VERSION)
   set (SF_VERSION_LOCAL_FILE ${PROJECT_SOURCE_DIR}/share/sound/VERSION)
-  set (DOWNLOAD_URL_ROOT "http://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General")
+  set (DOWNLOAD_URL_ROOT "https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General")
   set (SOUND_DIRECTORY ${PROJECT_SOURCE_DIR}/share/sound)
 
   file(DOWNLOAD ${DOWNLOAD_URL_ROOT}/VERSION ${SF_VERSION_REMOTE_FILE} STATUS SF_VERSION_DL_STATUS_LIST)
@@ -370,7 +387,7 @@ endif(BUILD_FOR_WINSTORE)
 
 if (USE_SYSTEM_FREETYPE)
       if (APPLE)
-            PKGCONFIG (freetype2 2.5.2 FREETYPE_INCLUDE_DIRS FREETYPE_LIBDIR FREETYPE_LIBRARIES FREETYPE_CPP)
+            PKGCONFIG1 (freetype2 2.5.2 FREETYPE_INCLUDE_DIRS FREETYPE_LIBDIR FREETYPE_LIBRARIES FREETYPE_CPP)
             if (FREETYPE_INCLUDE_DIRS)
                   STRING(REGEX REPLACE  "\"" "" FREETYPE_INCLUDE_DIRS ${FREETYPE_INCLUDE_DIRS})
                   STRING(REGEX REPLACE  "\"" "" FREETYPE_LIBDIR ${FREETYPE_LIBDIR})
@@ -626,6 +643,7 @@ if (NOT MINGW AND NOT MSVC AND NOT APPLE)
     string(TOUPPER "mscore${MSCORE_INSTALL_SUFFIX}" MAN_MSCORE_UPPER) # Command name shown in uppercase in man pages by convention
     if (${MSCORE_INSTALL_SUFFIX} MATCHES "portable") # Note: "-portable-anything" would match
       # Build portable AppImage as per https://github.com/probonopd/AppImageKit
+      add_subdirectory(build/Linux+BSD/portable)
       if (NOT DEFINED ARCH)
         execute_process(COMMAND arch OUTPUT_VARIABLE ARCH OUTPUT_STRIP_TRAILING_WHITESPACE)# Get architecture (strip trailing newline)
       endif (NOT DEFINED ARCH)
@@ -640,14 +658,13 @@ if (NOT MINGW AND NOT MSVC AND NOT APPLE)
       # Prepare portable scripts:
       configure_file(build/Linux+BSD/portable/AppRun.in          AppRun         @ONLY)
       configure_file(build/Linux+BSD/portable/portable-utils.in  portable-utils @ONLY)
-      set(SCRIPT_PERMS PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ WORLD_READ)
-      install(PROGRAMS ${PROJECT_BINARY_DIR}/AppRun     DESTINATION .   COMPONENT portable ${SCRIPT_PERMS})
+      install(PROGRAMS ${PROJECT_BINARY_DIR}/AppRun     DESTINATION .   COMPONENT portable)
       install(PROGRAMS ${PROJECT_BINARY_DIR}/portable-utils
                        build/Linux+BSD/portable/ldd-recursive
-                       build/rm-empty-dirs              DESTINATION bin COMPONENT portable ${SCRIPT_PERMS})
+                       build/rm-empty-dirs              DESTINATION bin COMPONENT portable)
       install(FILES    build/Linux+BSD/portable/qt.conf DESTINATION bin COMPONENT portable)
     else (${MSCORE_INSTALL_SUFFIX} MATCHES "portable")
-      set(MAN_PORTABLE .\\\") # comment out lines in man page that are only relevent to the portable version
+      set(MAN_PORTABLE .\\\") # comment out lines in man page that are only relevant to the portable version
     endif (${MSCORE_INSTALL_SUFFIX} MATCHES "portable")
     # Install desktop file (perform variable substitution first)
     configure_file(build/Linux+BSD/mscore.desktop.in mscore${MSCORE_INSTALL_SUFFIX}.desktop)
@@ -739,6 +756,7 @@ if (NOT MSVC)
 endif (NOT MSVC)
 
 ##
+
 ## Includes
 ##
 include_directories(
@@ -779,7 +797,19 @@ if (OMR)
  endif (NOT USE_SYSTEM_POPPLER)
 endif (OMR)
 
-add_subdirectory(mscore)
+set (BUILD_MU3 OFF)
+if (BUILD_UI_MU4)
+    if (BUILD_UI_MU4_WITH_MU3)
+        set (BUILD_MU3 ON)
+    endif(BUILD_UI_MU4_WITH_MU3)
+else (BUILD_UI_MU4)
+    set (BUILD_MU3 ON)
+endif(BUILD_UI_MU4)
+
+if (BUILD_MU3)
+    add_subdirectory(mscore)
+endif(BUILD_MU3)
+
 add_subdirectory(main)
 
 if (BUILD_CRASH_REPORTER)
@@ -787,7 +817,6 @@ if (BUILD_CRASH_REPORTER)
       add_subdirectory(crashreporter)
       add_dependencies(mscore mscore-crash-reporter)
       set (CRASHREPORTER_EXECUTABLE "${CRASHREPORTER_EXECUTABLE_NAME}${CMAKE_EXECUTABLE_SUFFIX}")
-      set (MSCORE_EXECUTABLE "${MSCORE_EXECUTABLE_NAME}${CMAKE_EXECUTABLE_SUFFIX}")
 endif (BUILD_CRASH_REPORTER)
 
 ##
@@ -801,58 +830,64 @@ configure_file (
 ##
 ## Add subdirs
 ##
-add_subdirectory(effects)
-add_subdirectory(synthesizer)
-subdirs(
-      awl bww2mxml share midi audiofile fluid libmscore
-      thirdparty/rtf2html thirdparty/beatroot
-      thirdparty/qzip
-      )
 
-if (BUILD_CRASH_REPORTER)
-      set(ENABLE_CRASH_REPORTER OFF CACHE BOOL "Disable libcrashreporter-qt GUI component")
-      add_subdirectory(thirdparty/libcrashreporter-qt)
-endif (BUILD_CRASH_REPORTER)
+if (BUILD_MU3)
+    add_subdirectory(bww2mxml)
+    add_subdirectory(effects)
+    add_subdirectory(audio)
 
-string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE)
-if (APPLE AND CMAKE_BUILD_TYPE MATCHES "DEBUG")
-# With xcode, we need to have all the targets in the same project
-add_subdirectory(mtest)
-else(APPLE AND CMAKE_BUILD_TYPE MATCHES "DEBUG")
-add_subdirectory(mtest EXCLUDE_FROM_ALL)
-endif(APPLE AND CMAKE_BUILD_TYPE MATCHES "DEBUG")
 
-add_subdirectory(rdoc EXCLUDE_FROM_ALL)
-add_subdirectory(miditools EXCLUDE_FROM_ALL)
-add_subdirectory(fonttools EXCLUDE_FROM_ALL)
-add_subdirectory(manual)
-add_subdirectory(demos)
+    if (BUILD_CRASH_REPORTER)
+          set(ENABLE_CRASH_REPORTER OFF CACHE BOOL "Disable libcrashreporter-qt GUI component")
+          add_subdirectory(thirdparty/libcrashreporter-qt)
+    endif (BUILD_CRASH_REPORTER)
 
-if (USE_PORTMIDI AND (MINGW OR APPLE OR MSVC))
-      subdirs (thirdparty/portmidi)
-endif (USE_PORTMIDI AND (MINGW OR APPLE OR MSVC))
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE)
+    if (APPLE AND CMAKE_BUILD_TYPE MATCHES "DEBUG")
+    # With xcode, we need to have all the targets in the same project
+    add_subdirectory(mtest)
+    else(APPLE AND CMAKE_BUILD_TYPE MATCHES "DEBUG")
+    add_subdirectory(mtest EXCLUDE_FROM_ALL)
+    endif(APPLE AND CMAKE_BUILD_TYPE MATCHES "DEBUG")
 
-if (AEOLUS)
-      subdirs (aeolus)
-endif (AEOLUS)
+    add_subdirectory(rdoc EXCLUDE_FROM_ALL)
+    add_subdirectory(miditools EXCLUDE_FROM_ALL)
+    add_subdirectory(fonttools EXCLUDE_FROM_ALL)
+    add_subdirectory(demos)
 
-if (ZERBERUS)
-      subdirs (zerberus)
-endif (ZERBERUS)
+    if (USE_PORTMIDI AND (MINGW OR APPLE OR MSVC))
+          add_subdirectory(thirdparty/portmidi)
+    endif (USE_PORTMIDI AND (MINGW OR APPLE OR MSVC))
 
-if (OMR)
-      subdirs (omr)
-      if (NOT USE_SYSTEM_POPPLER)
-            subdirs (thirdparty/poppler)
-      endif (NOT USE_SYSTEM_POPPLER)
-endif (OMR)
+    if (AEOLUS)
+          add_subdirectory(aeolus)
+    endif (AEOLUS)
 
-if (OSC)
-      subdirs (thirdparty/ofqf)
-endif (OSC)
+    if (AVSOMR)
+        add_subdirectory(avsomr)
+    endif (AVSOMR)
+
+    if (OMR)
+          add_subdirectory(omr)
+          if (NOT USE_SYSTEM_POPPLER)
+                add_subdirectory(thirdparty/poppler)
+          endif (NOT USE_SYSTEM_POPPLER)
+    endif (OMR)
+
+    if (OSC)
+          add_subdirectory(thirdparty/ofqf)
+    endif (OSC)
+
+endif(BUILD_MU3)
+
+add_subdirectory(awl)
+add_subdirectory(audiofile)
+add_subdirectory(share)
+add_subdirectory(libmscore)
+add_subdirectory(thirdparty/qzip)
 
 if (NOT USE_SYSTEM_FREETYPE)
-      subdirs (thirdparty/freetype)
+      add_subdirectory(thirdparty/freetype)
 endif (NOT USE_SYSTEM_FREETYPE)
 
 ##
@@ -900,19 +935,57 @@ add_custom_target(lrelease
    WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
 )
 
-add_dependencies(mscore pluginDocumentation)
-
-
 ##
-##  For MSVC: set the startup project to be mscore
-##     (requires CMake 3.6.3+ to work, but should be benign on other versions
-##      as it is just setting the value for a property).
+## Miscellaneous Microsoft Visual Studio settings
 ##
 if (MSVC)
+
+   # Force the "install" and "package" targets not to depend on the "all" target.
    set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY true)
    set(CMAKE_SKIP_PACKAGE_ALL_DEPENDENCY true)
-   set(VS_STARTUP_PROJECT mscore)
+
+   # Set the startup project to "mscore".
+   if (NOT ${CMAKE_VERSION} VERSION_LESS "3.6.0")
+      set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT mscore)
+   endif ()
+
+   # Set the debugging properties for the "mscore" project.
+   file(TO_NATIVE_PATH "${CMAKE_INSTALL_PREFIX}/bin" VS_DEBUGGER_WORKING_DIRECTORY)
+   if (NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0")
+      set_target_properties(mscore PROPERTIES VS_DEBUGGER_COMMAND "${VS_DEBUGGER_WORKING_DIRECTORY}\\${MSCORE_EXECUTABLE_NAME}${CMAKE_EXECUTABLE_SUFFIX}")
+   endif ()
+   if (NOT ${CMAKE_VERSION} VERSION_LESS "3.8.0")
+      set_target_properties(mscore PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${VS_DEBUGGER_WORKING_DIRECTORY}")
+   endif ()
+   if (NOT ${CMAKE_VERSION} VERSION_LESS "3.13.0")
+      set_target_properties(mscore PROPERTIES VS_DEBUGGER_COMMAND_ARGUMENTS "--debug")
+   endif ()
+
 endif (MSVC)
+
+add_subdirectory(framework)
+add_subdirectory(global) #todo remove
+
+if (BUILD_UI_MU4)
+    add_subdirectory(mu4)
+else(BUILD_UI_MU4)
+    add_subdirectory(mu4/importexport)
+    add_subdirectory(mu4/commonscene)
+    add_subdirectory(mu4/inspector)
+    add_subdirectory(mu4/palette)
+    add_subdirectory(mu4/cloud)
+    add_subdirectory(mu4/plugins)
+endif(BUILD_UI_MU4)
+
+define_property(TARGET PROPERTY OUTPUT_XML
+    BRIEF_DOCS "List XML files outputed by google test."
+    FULL_DOCS "List XML files outputed by google test."
+)
+
+if (BUILD_UNIT_TESTS)
+    add_subdirectory(thirdparty/googletest)
+    enable_testing()
+endif(BUILD_UNIT_TESTS)
 
 ## TEMP: Display all variables!
 ### message(STATUS "===========================================================")

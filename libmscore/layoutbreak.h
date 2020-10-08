@@ -16,7 +16,6 @@
 #include "element.h"
 
 namespace Ms {
-
 // layout break subtypes:
 
 //---------------------------------------------------------
@@ -24,64 +23,63 @@ namespace Ms {
 ///    symbols for line break, page break etc.
 //---------------------------------------------------------
 
-class LayoutBreak final : public Element {
-      Q_GADGET
-   public:
-      enum Type {
-            ///.\{
-            PAGE, LINE, SECTION, NOBREAK
-            ///\}
-            };
-   private:
-      Q_ENUM(Type);
+class LayoutBreak final : public Element
+{
+    Q_GADGET
+public:
+    enum Type {
+        ///.\{
+        PAGE, LINE, SECTION, NOBREAK
+        ///\}
+    };
+private:
+    Q_ENUM(Type);
 
-      qreal lw;
-      QPainterPath path;
-      QPainterPath path2;
-      qreal _pause;
-      bool _startWithLongNames;
-      bool _startWithMeasureOne;
-      Type _layoutBreakType;
+    qreal lw;
+    QPainterPath path;
+    QPainterPath path2;
+    qreal _pause;
+    bool _startWithLongNames;
+    bool _startWithMeasureOne;
+    Type _layoutBreakType;
 
-      virtual void draw(QPainter*) const override;
-      void layout0();
-      virtual void spatiumChanged(qreal oldValue, qreal newValue) override;
+    void draw(QPainter*) const override;
+    void layout0();
+    void spatiumChanged(qreal oldValue, qreal newValue) override;
 
-   public:
-      LayoutBreak(Score* = 0);
-      LayoutBreak(const LayoutBreak&);
-      virtual LayoutBreak* clone() const override { return new LayoutBreak(*this); }
+public:
+    LayoutBreak(Score* = 0);
+    LayoutBreak(const LayoutBreak&);
 
-      virtual ElementType type() const override   { return ElementType::LAYOUT_BREAK; }
+    LayoutBreak* clone() const override { return new LayoutBreak(*this); }
+    ElementType type() const override { return ElementType::LAYOUT_BREAK; }
 
-      void setLayoutBreakType(Type);
-      Type layoutBreakType() const  { return _layoutBreakType; }
+    void setLayoutBreakType(Type);
+    Type layoutBreakType() const { return _layoutBreakType; }
 
-      virtual bool acceptDrop(EditData&) const override;
-      virtual Element* drop(EditData&) override;
-      virtual void write(XmlWriter&) const override;
-      virtual void read(XmlReader&) override;
+    bool acceptDrop(EditData&) const override;
+    Element* drop(EditData&) override;
+    void write(XmlWriter&) const override;
+    void read(XmlReader&) override;
 
-      Measure* measure() const            { return (Measure*)parent();   }
-      qreal pause() const                 { return _pause;               }
-      void setPause(qreal v)              { _pause = v;                  }
-      bool startWithLongNames() const     { return _startWithLongNames;  }
-      void setStartWithLongNames(bool v)  { _startWithLongNames = v;     }
-      bool startWithMeasureOne() const    { return _startWithMeasureOne; }
-      void setStartWithMeasureOne(bool v) { _startWithMeasureOne = v;    }
+    Measure* measure() const { return (Measure*)parent(); }
+    qreal pause() const { return _pause; }
+    void setPause(qreal v) { _pause = v; }
+    bool startWithLongNames() const { return _startWithLongNames; }
+    void setStartWithLongNames(bool v) { _startWithLongNames = v; }
+    bool startWithMeasureOne() const { return _startWithMeasureOne; }
+    void setStartWithMeasureOne(bool v) { _startWithMeasureOne = v; }
 
-      bool isPageBreak() const    { return _layoutBreakType == PAGE;    }
-      bool isLineBreak() const    { return _layoutBreakType == LINE;    }
-      bool isSectionBreak() const { return _layoutBreakType == SECTION; }
-      bool isNoBreak() const      { return _layoutBreakType == NOBREAK; }
+    bool isPageBreak() const { return _layoutBreakType == PAGE; }
+    bool isLineBreak() const { return _layoutBreakType == LINE; }
+    bool isSectionBreak() const { return _layoutBreakType == SECTION; }
+    bool isNoBreak() const { return _layoutBreakType == NOBREAK; }
 
-      virtual QVariant getProperty(Pid propertyId) const override;
-      virtual bool setProperty(Pid propertyId, const QVariant&) override;
-      virtual QVariant propertyDefault(Pid) const override;
-      virtual Pid propertyId(const QStringRef& xmlName) const override;
-      };
-
-
+    QVariant getProperty(Pid propertyId) const override;
+    bool setProperty(Pid propertyId, const QVariant&) override;
+    QVariant propertyDefault(Pid) const override;
+    Pid propertyId(const QStringRef& xmlName) const override;
+};
 }     // namespace Ms
 
 #endif
